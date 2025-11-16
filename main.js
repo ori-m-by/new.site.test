@@ -60,18 +60,29 @@ function parseJwt(token) {
  * 3) CHECK EMAIL AGAINST GOOGLE SHEET
  ******************************************************************/
 async function isEmailAllowed(email) {
-    const url =
-        `https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_AUTH_ID}` +
-        `/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(GOOGLE_SHEET_AUTH_NAME)}`;
+    try {
+        const response = await fetch(CSV_URL);
+        if (!response.ok) return false;
 
-    const csv = await fetch(url).then(r => r.text());
-    const rows = Papa.parse(csv, { header: true }).data;
+        const text = await response.text();
 
-    return rows.some(r =>
-        (r[GOOGLE_SHEET_AUTH_COLUMN] || "").trim().toLowerCase() ===
-        email.trim().toLowerCase()
-    );
+        // 🟦 ניקוי Byte Order Mark – תו בלתי־נראה שגורם לכך שהכותרת לא תהיה בדיוק "email"
+        const clean = text.replace(/^\uFEFF/, "");
+
+        const rows = clean.trim().split("\n");
+
+        // כל המיילים בעמודה הראשונה
+        const emails = rows
+            .slice(1)   // דלג על header
+            .map(r => r.split(",")[0].trim().toLowerCase());
+
+        return emails.includes(email.toLowerCase());
+    } catch (e) {
+        console.error("CSV load error:", e);
+        return false;
+    }
 }
+
 
 /******************************************************************
  * 4) START REAL APP (YOUR ORIGINAL CODE BELOW)
@@ -92,3 +103,4 @@ function startApp() {
     /********************** כל הקוד שאתה שלחת — הדבקתי בשלמותו **********************/
     // — הכל זהה, רק עטפנו ב-startApp() —
     // — התחלה —
+
