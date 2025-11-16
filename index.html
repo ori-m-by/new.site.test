@@ -1,53 +1,74 @@
 <!DOCTYPE html>
-<html lang="he">
+<html lang="he" dir="rtl">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Bar Yosef Movie Site</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>האתר שלי</title>
+
+    <!-- Bootstrap + CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
 
     <!-- Google Identity Services -->
     <script src="https://accounts.google.com/gsi/client" async defer></script>
 
-    <!-- CSS שלך (אם יש) -->
-    <link rel="stylesheet" href="style.css" />
+    <style>
+        body { background:#f7f7f7; }
+        #moviecontainer { min-height: 300px; }
+        #loginBox {
+            display:flex;
+            justify-content:center;
+            margin-top:40px;
+        }
+    </style>
 </head>
+
 <body>
+    <h1 class="text-center my-4">🍿 ברוך הבא לאתר</h1>
 
-    <!-- LOGIN BOX -->
-    <div id="login-container" style="text-align:center; margin-top:40px; display:none;">
-        <h2>🔐 התחבר כדי להמשיך</h2>
-
-        <div 
-            id="g_id_onload"
-            data-client_id="1083389812447-mst37a55gquvk05cuc8utqsuunfar6hb.apps.googleusercontent.com"
-            data-callback="onGoogleSignIn"
-            data-auto_prompt="false">
-        </div>
-
-        <div 
-            class="g_id_signin"
-            data-type="standard"
-            data-size="large"
-            data-theme="outline"
-            data-text="signin_with"
-            data-shape="rectangular">
-        </div>
-
-        <br><br>
-        <p>המייל שלך לא יישמר אצל צד שלישי. רק אצלך ב־localStorage.</p>
+    <!-- כפתור מעבר סרטים/סדרות -->
+    <div class="container text-center mb-3">
+        <button id="toggleViewBtn" class="btn btn-primary">📺 מעבר לתצוגת סדרות</button>
     </div>
 
-    <!-- APP CONTENT -->
-    <div id="app-root" style="display:none;">
-        <!-- כאן מופיע כל התוכן של האתר שלך -->
-        <h1 id="site-title">🎬 Bar Yosef Movie Site</h1>
-
-        <!-- כל מה שהיה לך קודם ב־HTML נשאר כרגיל -->
-        <div id="content"></div>
+    <!-- אזור סינון -->
+    <div class="filter-bar container mb-3">
+        <div class="row g-2">
+            <div class="col"><select id="yearFilter" class="form-select"><option value="">שנה</option></select></div>
+            <div class="col"><select id="genreFilter" class="form-select"><option value="">ז'אנר</option></select></div>
+            <div class="col"><select id="pgFilter" class="form-select"><option value="">קהל יעד</option></select></div>
+            <div class="col"><input id="ratingFilter" class="form-control" placeholder="ציון מינימלי"></div>
+            <div class="col"><input id="searchInput" class="form-control" placeholder="חיפוש"></div>
+        </div>
     </div>
 
-    <!-- קבצי JS -->
+    <!-- אזור לוגין -->
+    <div id="loginBox">
+        <div id="g_id_onload"
+             data-client_id="***1083389812447-mst37a55gquvk05cuc8utqsuunfar6hb.apps.googleusercontent.com
+***"
+             data-context="signin"
+             data-callback="handleGoogleLogin"
+             data-auto_prompt="false">
+        </div>
+
+        <div class="g_id_signin"
+             data-type="standard"
+             data-shape="rectangular"
+             data-theme="filled_blue"
+             data-text="signin_with"
+             data-size="large">
+        </div>
+    </div>
+
+    <!-- תוצאות -->
+    <div class="container">
+        <div id="moviecontainer" class="row"></div>
+    </div>
+
+    <!-- PapaParse -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+
+    <!-- main.js -->
     <script src="main.js"></script>
-
 </body>
 </html>
