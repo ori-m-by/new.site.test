@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+
+    <meta charset="UTF-8">
+    <title>🎬 סרטים לצפייה</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- <script src="https://unpkg.com/tabletop@1.6.0"></script> -->
+    <!-- 2. מונעים פליקר על ידי הסתרת כל התוכן עד לבדיקה -->
+    <style>
+        html {
+            visibility: hidden;
+        }
+    </style>
+
+    <script>
+        // 2a. הגדרות
+        const SPREADSHEET_ID = '1JjygqhtHt22W8baJINiJ7qWgcORZ9cguWyV5_Grsu5c';
+        const GID = '0';  // gid של הכרטיסייה AuthorizedUsers
+        const CSV_URL =
+            `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/export?format=csv&gid=${GID}`;
+        const LOGIN_PAGE = 'login.html';
+
+        // 2b. בדיקה מיידית
+        (function () {
+            const uuid = localStorage.getItem("uuid");
+            if (!uuid) {
+                // אין UUID → מפנים מיד לעמוד ההרשמה/כניסה
+                return window.location.replace(LOGIN_PAGE);
+            }
+
+            // 2c. מביאים CSV של AuthorizedUsers
+            fetch(CSV_URL)
+                .then(res => {
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                    return res.text();
+                })
+                .then(text => {
+                    const [headerLine, ...lines] = text.trim().split("\n");
+                    const headers = headerLine.split(",").map(h => h.trim());
+                    const rows = lines.map(line => {
+                        const cols = line.split(",").map(c => c.trim());
+                        return headers.reduce((o, h, i) => (o[h] = cols[i] || "", o), {});
+                    });
+
+                    // 2d. בדיקת קיום UUID
+                    const isAllowed = rows.some(r => r.UUID === uuid);
+                    if (isAllowed) {
+                        // מאושר → חושפים את הדף
+                        document.documentElement.style.visibility = 'visible';
+                    } else {
+                        // לא מאושר → מפנים
+                        window.location.replace(LOGIN_PAGE);
+                    }
+                })
+                .catch(() => {
+                    // בשגיאה בגלישה או בפרסור → מפנים
+                    window.location.replace(LOGIN_PAGE);
+                });
+        })();
+    </script>
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        /* הוסף ל־styles.css או בתוך <style> ב־<head> */
+
+        .bug-report-button {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 48px;
+            height: 48px;
+            background: #dc3545;
+            color: #fff;
+            font-size: 24px;
+            line-height: 48px;
+            text-align: center;
+            border-radius: 50%;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+            text-decoration: none;
+            z-index: 1000;
+            cursor: pointer;
+        }
+
+            /* Tooltip פשוט באמצעות data-attribute */
+            .bug-report-button::after {
+                content: attr(data-tooltip);
+                position: absolute;
+                bottom: 60px; /* מעל הכפתור */
+                right: 50%;
+                transform: translateX(50%);
+                background: rgba(0,0,0,0.8);
+                color: #fff;
+                padding: 6px 10px;
+                border-radius: 4px;
+                white-space: nowrap;
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity 0.2s ease;
+                font-size: 14px;
+            }
+
+            /* כשעומדים עם העכבר – מציגים את ה־tooltip */
+            .bug-report-button:hover::after {
+                opacity: 1;
+            }
+
+        /* כרטיס סרטים – מאפשר למתוח מתחת */
+        .movie-card {
+            position: relative;
+            overflow: visible;
+            transition: transform 0.3s ease;
+        }
+
+        body:not(.series-mode) .movie-card:hover {
+            transform: scale(1.03);
+        }
+
+        /* טקסט משמאל */
+        .movie-content {
+            width: 60%;
+            padding: 15px;
+            box-sizing: border-box;
+        }
+        /* תמונה שנייה מתחת לטקסט */
+        .text-extra-image {
+            width: 100%;
+            height: auto;
+            object-fit: contain;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+
+        /* פוסטר מימין */
+        .right-side {
+            width: 40%;
+            padding: 15px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+            .right-side .movie-image {
+                width: 100%;
+                height: auto;
+                object-fit: cover;
+                border-radius: 8px;
+            }
+        /* התמונה הראשונה מתחת לפוסטר */
+        .poster-extra-image {
+            width: 100%;
+            height: auto;
+            object-fit: contain;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+
+        /* extra-info – overlay של הפירוט */
+        .extra-info {
+            display: none;
+            background: rgba(255,255,255,0.95);
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .movie-card.show-info .extra-info {
+            display: block;
+        }
+
+        /* כשהhover – מוסיף overlay, אבל מוחק את התמונות הנוספות */
+        .movie-card.show-info .text-extra-image,
+        .movie-card.show-info .poster-extra-image {
+            display: none !important;
+        }
+
+        /* סרגל פילטר אופקי בשורה אחת */
+        .filter-bar {
+            display: flex;
+            flex-wrap: nowrap;
+            gap: 10px;
+            justify-content: center;
+            margin-bottom: 30px;
+        }
+
+            .filter-bar .form-control,
+            .filter-bar .form-select {
+                flex: 0 1 200px;
+            }
+
+        /* trailer */
+        .trailer-container {
+            width: 100%;
+            height: 200px;
+            margin-bottom: 10px;
+            border-radius: 10px;
+            overflow: hidden;
+            visibility: hidden;
+        }
+
+        body:not(.series-mode) .movie-card.show-info .trailer-container {
+            visibility: visible;
+        }
+    </style>
+
+
+
+
+</head>
+<body class="bg-light">
+    <div class="container py-5">
+        <h1 class="text-center mb-4">🎬 הסרטים שלנו</h1>
+
+        <div class="text-center mb-4">
+            <button id="toggleViewBtn" class="btn btn-outline-primary">
+                📺 מעבר לתצוגת סדרות
+            </button>
+        </div>
+
+
+        <!-- סרגל סינון וחיפוש -->
+        <div class="filter-bar text-center mb-4">
+            <input type="text" id="searchInput" class="form-control" placeholder="חיפוש לפי שם, במאי, שחקנים, תיאור" oninput="applyFilters()">
+            <select id="yearFilter" class="form-select mt-2" onchange="applyFilters()">
+                <option value="">כל השנים</option>
+            </select>
+            <select id="ratingFilter" class="form-select mt-2" onchange="applyFilters()">
+                <option value="0">כל הדירוגים</option>
+                <option value="9">9 ומעלה</option>
+                <option value="8">8 ומעלה</option>
+                <option value="7">7 ומעלה</option>
+                <option value="6">6 ומעלה</option>
+            </select>
+            <select id="genreFilter" class="form-select mt-2" onchange="applyFilters()">
+                <option value="">כל הז'אנרים</option>
+            </select>
+            <select id="pgFilter" class="form-select mt-2" onchange="applyFilters()">
+                <option value="">כל סוגי הקהל</option>
+            </select>
+
+        </div>
+
+        <div id="moviecontainer" class="row row-cols-1 row-cols-md-2 g-4"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+    <script src="main.js"></script>
+    <a href="https://docs.google.com/forms/d/e/1FAIpQLSePUwUmQBi4iJN5FjptxlrWIuDG7z1FEe7lSyVmBkzo6eRVMw/viewform?usp=dialog"
+       target="_blank"
+       class="bug-report-button"
+       data-tooltip="טופס תקלות<br>דיווח על פרק/סרט">
+        ⚠️
+    </a>
+</body>
+</html>
