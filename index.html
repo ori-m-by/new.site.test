@@ -41,8 +41,8 @@
         ──────────────────────────────────────────────── */
         const APPROVED_SHEET_ID = "1EYGrBVteGM4_kXhc6owSxicwIrMp6FkzV74AjZdeAeM";
         const APPROVED_SHEET_NAME = "מיילים מורשים";
-        const CSV_URL =
-            `https://docs.google.com/spreadsheets/d/${APPROVED_SHEET_ID}/export?format=csv&sheet=${encodeURIComponent(APPROVED_SHEET_NAME)}`;
+        const APPROVED_SHEET_GID = "0";   // זה ה-gid של 'מיילים מורשים'
+        const url = `https://docs.google.com/spreadsheets/d/${APPROVED_SHEET_ID}/export?format=csv&gid=${APPROVED_SHEET_GID}`;
 
         const GOOGLE_CLIENT_ID =
             "1083389812447-mst37a55gquvk05cuc8utqsuunfar6hb.apps.googleusercontent.com";
@@ -96,20 +96,25 @@
         /* ────────────────────────────────────────────────
            בדיקת הרשאה מול הטבלה
         ──────────────────────────────────────────────── */
-        async function checkIfEmailAuthorized(email) {
-            try {
-                const response = await fetch(CSV_URL);
-                if (!response.ok) return false;
+      async function checkIfEmailAuthorized(email) {
+    try {
+        const response = await fetch(url);  // ← זה ה-URL הנכון שהגדרת למעלה
+        if (!response.ok) return false;
 
-                const text = await response.text();
-                const rows = text.trim().split("\n").map(r => r.trim());
-                const list = rows.map(r => r.split(",")[0].trim().toLowerCase());
-                return list.includes(email.toLowerCase());
-            } catch (e) {
-                console.error("CSV load error:", e);
-                return false;
-            }
-        }
+        const text = await response.text();
+        const rows = Papa.parse(text, { header: true }).data;
+
+        // קריאת הערך מהעמודה "email"
+        const approvedEmails = rows
+            .map(r => (r.email || "").trim().toLowerCase())
+            .filter(x => x);
+
+        return approvedEmails.includes(email.toLowerCase());
+    } catch (e) {
+        console.error("CSV load error:", e);
+        return false;
+    }
+}
 
         /* ────────────────────────────────────────────────
            הפעלת כפתור התחברות אם המשתמש לא מחובר
@@ -207,3 +212,4 @@
 
 </body>
 </html>
+
