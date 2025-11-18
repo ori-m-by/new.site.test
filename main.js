@@ -21,25 +21,35 @@ const fallbackImage =
 /******************************************************************
  * 1) GOOGLE AUTH CHECK (CALLED BY INDEX.HTML)
  ******************************************************************/
+
 async function isEmailAllowed(email) {
     try {
-        const res = await fetch(GOOGLE_SHEET_AUTH_URL);
-        if (!res.ok) return false;
+        const response = await fetch(CSV_URL);
+        if (!response.ok) return false;
 
-        const text = await res.text();
-        const rows = Papa.parse(text, { header: true }).data;
+        const text = await response.text();
 
-        const approved = rows
-            .map(r => (r.email || "").trim().toLowerCase())
-            .filter(x => x.length > 0);
+        // 🟦 דיבוג — להדפיס את מה שהטבלה באמת מחזירה
+        console.log("RAW CSV:", text);
+        console.log("PARSED META:", Papa.parse(text, { header: true }).meta);
+        console.log("PARSED DATA SAMPLE:", Papa.parse(text, { header: true }).data.slice(0,3));
 
-        return approved.includes(email.toLowerCase());
+        // ניקוי BOM
+        const clean = text.replace(/^\uFEFF/, "");
 
-    } catch (err) {
-        console.error("CSV auth error:", err);
+        const rows = clean.trim().split("\n");
+
+        const emails = rows
+            .slice(1)
+            .map(r => r.split(",")[0].trim().toLowerCase());
+
+        return emails.includes(email.toLowerCase());
+    } catch (e) {
+        console.error("CSV load error:", e);
         return false;
     }
 }
+
 
 /******************************************************************
  * 2) START REAL APP (ALL YOUR MOVIE/SERIES LOGIC)
@@ -336,3 +346,4 @@ function startApp() {
 
     loadMovies();
 }
+
