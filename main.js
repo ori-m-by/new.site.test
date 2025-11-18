@@ -24,15 +24,15 @@ const fallbackImage =
 
 async function isEmailAllowed(email) {
     try {
-        const response = await fetch(CSV_URL);
+        const response = await fetch(GOOGLE_SHEET_AUTH_URL);
         if (!response.ok) return false;
 
         const text = await response.text();
 
-        // 🟦 דיבוג — להדפיס את מה שהטבלה באמת מחזירה
+        // DEBUG
         console.log("RAW CSV:", text);
         console.log("PARSED META:", Papa.parse(text, { header: true }).meta);
-        console.log("PARSED DATA SAMPLE:", Papa.parse(text, { header: true }).data.slice(0,3));
+        console.log("PARSED DATA SAMPLE:", Papa.parse(text, { header: true }).data.slice(0, 3));
 
         // ניקוי BOM
         const clean = text.replace(/^\uFEFF/, "");
@@ -44,12 +44,12 @@ async function isEmailAllowed(email) {
             .map(r => r.split(",")[0].trim().toLowerCase());
 
         return emails.includes(email.toLowerCase());
+
     } catch (e) {
         console.error("CSV load error:", e);
         return false;
     }
 }
-
 
 /******************************************************************
  * 2) START REAL APP (ALL YOUR MOVIE/SERIES LOGIC)
@@ -346,4 +346,5 @@ function startApp() {
 
     loadMovies();
 }
+
 
