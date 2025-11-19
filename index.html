@@ -1,21 +1,20 @@
 <!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
-    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
     <meta charset="UTF-8" />
     <title>🎬 סרטים לצפייה</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <!-- ─────────────────────────────────────────────── -->
-    <!-- 1) Google Identity Services                    -->
-    <!-- ─────────────────────────────────────────────── -->
+    <!-- Google Identity Services -->
     <script src="https://accounts.google.com/gsi/client" async defer></script>
+
+    <!-- PapaParse נטען מראש -->
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 
     <style>
         html { visibility: hidden; }
         body { background: #f7f7f7; }
 
-        /* מסך חסימה */
         #blockScreen {
             display: none;
             position: fixed;
@@ -26,92 +25,71 @@
             padding: 40px;
             text-align: center;
         }
-        #blockScreen h1 {
-            font-size: 32px;
-            margin-bottom: 20px;
-        }
-        #blockScreen p {
-            font-size: 20px;
-            color: #555;
-        }
+        #blockScreen h1 { font-size: 32px; margin-bottom: 20px; }
+        #blockScreen p  { font-size: 20px; color: #555; }
     </style>
 
     <script>
-        /* ────────────────────────────────────────────────
-           CONFIG: טבלת מיילים מורשים
-        ──────────────────────────────────────────────── */
-        const APPROVED_SHEET_ID = "1EYGrBVteGM4_kXhc6owSxicwIrMp6FkzV74AjZdeAeM";
-        const APPROVED_SHEET_NAME = "מיילים מורשים";
-        const APPROVED_SHEET_GID = "0";   // זה ה-gid של 'מיילים מורשים'
-        const url = `https://docs.google.com/spreadsheets/d/${APPROVED_SHEET_ID}/export?format=csv&gid=${APPROVED_SHEET_GID}`;
+        /*────────────────────────────────────────────
+           CONFIG – טבלת מיילים מורשים
+        ────────────────────────────────────────────*/
+        const GOOGLE_CLIENT_ID = "1083389812447-mst37a55gquvk05cuc8utqsuunfar6hb.apps.googleusercontent.com";
 
-        const GOOGLE_CLIENT_ID =
-            "1083389812447-mst37a55gquvk05cuc8utqsuunfar6hb.apps.googleusercontent.com";
+        const AUTH_SHEET_ID  = "1EYGrBVteGM4_kXhc6owSxicwIrMp6FkzV74AjZdeAeM";
+        const AUTH_GID       = "0";
+        const AUTH_CSV_URL   = `https://docs.google.com/spreadsheets/d/${AUTH_SHEET_ID}/export?format=csv&gid=${AUTH_GID}`;
 
-        /* ────────────────────────────────────────────────
-           הצגת חסימה
-        ──────────────────────────────────────────────── */
+        /*────────────────────────────────────────────
+           הצגת מסך חסימה
+        ────────────────────────────────────────────*/
         function showBlockScreen() {
             document.getElementById("blockScreen").style.display = "block";
             document.documentElement.style.visibility = "visible";
         }
 
-        /* ────────────────────────────────────────────────
-           התחברות בגוגל – callback
-        ──────────────────────────────────────────────── */
+        /*────────────────────────────────────────────
+           Callback מגוגל
+        ────────────────────────────────────────────*/
         async function handleCredentialResponse(response) {
             try {
                 const data = parseJwt(response.credential);
-                const userEmail = data.email;
+                const email = data.email;
 
-                const allowed = await isEmailAllowed(userEmail);
+                const allowed = await isEmailAllowed(email);
                 if (!allowed) {
                     localStorage.removeItem("gs_auth_email");
-                    showBlockScreen();
-                    return;
+                    return showBlockScreen();
                 }
 
-                localStorage.setItem("gs_auth_email", userEmail);
-                document.documentElement.style.visibility = "visible";
-                loadApp(); // נמשיך לטעון את האתר
+                localStorage.setItem("gs_auth_email", email);
+
+                // טוען את ה־main.js רק אחרי הצלחה!
+                loadApp();
+
             } catch (e) {
                 console.error("Login error:", e);
                 showBlockScreen();
             }
         }
 
-        /* ────────────────────────────────────────────────
-           JWT decode
-        ──────────────────────────────────────────────── */
         function parseJwt(token) {
-            const base64Url = token.split('.')[0];  
+            const base64Url = token.split('.')[1];
             const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-            const jsonPayload = decodeURIComponent(
-                atob(base64).split('').map(c =>
-                    '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)
-                ).join('')
-            );
+            const jsonPayload = decodeURIComponent(atob(base64).split('').map(c =>
+                '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)
+            ).join(''));
             return JSON.parse(jsonPayload);
         }
 
-        /* ────────────────────────────────────────────────
-           בדיקת הרשאה מול הטבלה
-        ──────────────────────────────────────────────── */
- 
-
-        /* ────────────────────────────────────────────────
-           הפעלת כפתור התחברות אם המשתמש לא מחובר
-        ──────────────────────────────────────────────── */
+        /*────────────────────────────────────────────
+           התחברות אם אין שמור
+        ────────────────────────────────────────────*/
         async function startLoginFlow() {
             const saved = localStorage.getItem("gs_auth_email");
             if (saved) {
                 const ok = await isEmailAllowed(saved);
-                if (ok) {
-                    document.documentElement.style.visibility = "visible";
-                    return loadApp();
-                } else {
-                    localStorage.removeItem("gs_auth_email");
-                }
+                if (ok) return loadApp();
+                else localStorage.removeItem("gs_auth_email");
             }
 
             google.accounts.id.initialize({
@@ -127,34 +105,34 @@
             document.documentElement.style.visibility = "visible";
         }
 
-        /* ────────────────────────────────────────────────
-           טעינת האתר אחרי אימות
-        ──────────────────────────────────────────────── */
+        /*────────────────────────────────────────────
+           טעינת האתר לאחר התחברות
+        ────────────────────────────────────────────*/
         function loadApp() {
-            // זה פשוט נותן ל-main.js להיטען כרגיל
-            document.dispatchEvent(new Event("DOMContentLoaded"));
+            document.documentElement.style.visibility = "visible";
+
+            // טוען את main.js
+            const s = document.createElement("script");
+            s.src = "main.js?v=" + Date.now();
+            document.body.appendChild(s);
+
+            // מציג את התוכן
+            document.getElementById("appContent").style.display = "block";
         }
 
-        /* ────────────────────────────────────────────────
-           התחלה
-        ──────────────────────────────────────────────── */
-        window.onload = () => startLoginFlow();
+        window.onload = startLoginFlow;
     </script>
 </head>
 
 <body class="bg-light">
 
-    <!-- מסך חסימה -->
     <div id="blockScreen">
         <h1>🚫 אין גישה</h1>
-        <p>המייל שלך לא מאושר לשימוש באתר.</p>
-        <p>אם זה טעות — פנה למנהל האתר.</p>
+        <p>המייל שלך לא מאושר.</p>
     </div>
 
-    <!-- מסך התחברות -->
     <div id="gLoginBtn" style="margin: 40px auto; width: fit-content;"></div>
 
-    <!-- תוכן האתר (מוסתר עד אימות) -->
     <div id="appContent" style="display:none;">
         <div class="container py-5">
             <h1 class="text-center mb-4">🎬 הסרטים שלנו</h1>
@@ -167,9 +145,7 @@
 
             <div class="filter-bar text-center mb-4">
                 <input type="text" id="searchInput" class="form-control" placeholder="חיפוש..." oninput="applyFilters()">
-                <select id="yearFilter" class="form-select mt-2" onchange="applyFilters()">
-                    <option value="">כל השנים</option>
-                </select>
+                <select id="yearFilter" class="form-select mt-2" onchange="applyFilters()"></select>
                 <select id="ratingFilter" class="form-select mt-2" onchange="applyFilters()">
                     <option value="0">כל הדירוגים</option>
                     <option value="9">9 ומעלה</option>
@@ -177,23 +153,16 @@
                     <option value="7">7 ומעלה</option>
                     <option value="6">6 ומעלה</option>
                 </select>
-                <select id="genreFilter" class="form-select mt-2" onchange="applyFilters()">
-                    <option value="">כל הז'אנרים</option>
-                </select>
-                <select id="pgFilter" class="form-select mt-2" onchange="applyFilters()">
-                    <option value="">כל סוגי הקהל</option>
-                </select>
+                <select id="genreFilter" class="form-select mt-2" onchange="applyFilters()"></select>
+                <select id="pgFilter" class="form-select mt-2" onchange="applyFilters()"></select>
             </div>
 
             <div id="moviecontainer" class="row row-cols-1 row-cols-md-2 g-4"></div>
         </div>
 
+        <!-- ספריות צד שלישי -->
         <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-        <script src="main.js"></script>
     </div>
 
 </body>
 </html>
-
-
-
