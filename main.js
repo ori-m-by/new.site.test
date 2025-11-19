@@ -19,29 +19,7 @@ const fallbackImage =
   "https://raw.githubusercontent.com/ori-m-by/bar-yosef-movie-site/main/תמונה_לא_טעונה.png";
 
 /******************************************************************
- * 1) CHECK EMAIL AUTHORIZATION
- ******************************************************************/
-async function isEmailAllowed(email) {
-    try {
-        const response = await fetch(AUTH_CSV_URL);
-        if (!response.ok) return false;
 
-        const text = await response.text();
-
-        // ניקוי BOM
-        const clean = text.replace(/^\uFEFF/, "");
-        const rows  = clean.split("\n");
-
-        const emails = rows
-            .slice(1)
-            .map(r => r.split(",")[0].trim().toLowerCase());
-
-        return emails.includes(email.toLowerCase());
-    } catch (e) {
-        console.error("CSV auth load error:", e);
-        return false;
-    }
-}
 
 /******************************************************************
  * 2) START REAL APP — כל הקוד המקורי שלך כאן
@@ -225,3 +203,4 @@ function startApp() {
 
     loadMovies();
 }
+
