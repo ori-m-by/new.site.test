@@ -1,8 +1,6 @@
 // main.js
 
-// ────────────────────────────────────────────────────────────────────────────
 // 0) Config & state
-// ────────────────────────────────────────────────────────────────────────────
 const moviesCsvUrl   = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRy3QmBmzq23a0pVmV7GBNa8ryYiKiIes8VclVTfCiwqPRITOxxSrZt8dT9aTCkpQ/pub?output=csv";
 const seriesListId   = "1yYRTUq6iRh0dfhFFFpVJiR351jXS2Ll-9VCjsLrTW0Y";
 const seriesListName = "טבלת סדרות";
@@ -14,11 +12,8 @@ let isSeriesMode = false;
 
 const fallbackImage = "https://raw.githubusercontent.com/ori-m-by/bar-yosef-movie-site/main/תמונה_לא_טעונה.png";
 
-// ────────────────────────────────────────────────────────────────────────────
 // 1) createMovieCard
-// ────────────────────────────────────────────────────────────────────────────
 function createMovieCard(data) {
-  // 1) נתונים
   const heb    = data["שם הסרט בעברית"]     || "";
   const eng    = data["שם הסרט באנגלית"]    || "";
   const pic    = data["קישור לתמונה"]        || fallbackImage;
@@ -35,7 +30,6 @@ function createMovieCard(data) {
   const viewL  = (data["קישור לדרייב"]    || "").trim();
   const imdbL  = (data["קישור ל-IMDb"]   || "").trim();
 
-  // 2) קליינרים
   const card = document.createElement("div");
   card.className = "col-12 col-md-6 mb-4";
 
@@ -44,7 +38,6 @@ function createMovieCard(data) {
   inner.addEventListener("mouseenter", () => inner.classList.add("show-info"));
   inner.addEventListener("mouseleave", () => inner.classList.remove("show-info"));
 
-  // 3) עמודת טקסט + תמונה שנייה מתחת לטקסט
   const textCol = document.createElement("div");
   textCol.className = "movie-content";
   textCol.innerHTML = `
@@ -59,7 +52,6 @@ function createMovieCard(data) {
   txtImg.className = "text-extra-image";
   textCol.append(txtImg);
 
-  // overlay פירוט
   const extra = document.createElement("div");
   extra.className = "extra-info";
   extra.innerHTML = `
@@ -75,7 +67,6 @@ function createMovieCard(data) {
   `;
   textCol.append(extra);
 
-  // 4) עמודת פוסטר + התמונה הראשונה מתחת לפוסטר
   const imgCol = document.createElement("div");
   imgCol.className = "right-side";
 
@@ -92,7 +83,6 @@ function createMovieCard(data) {
   extraPoster.className = "poster-extra-image";
   imgCol.append(extraPoster);
 
-  // 5) הרכבה
   const row = document.createElement("div");
   row.className = "d-flex";
   row.append(textCol, imgCol);
@@ -103,9 +93,7 @@ function createMovieCard(data) {
   return card;
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// 2) createSeriesCard
-// ────────────────────────────────────────────────────────────────────────────
+// createSeriesCard
 function createSeriesCard(s) {
   const heb   = s["שם הסדרה בעברית"]       || "";
   const eng   = s["שם הסדרה באנגלית"]      || "";
@@ -146,9 +134,7 @@ function createSeriesCard(s) {
   return card;
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// 3) render helpers
-// ────────────────────────────────────────────────────────────────────────────
+// render helpers
 function renderMovies(list) {
   const c = document.getElementById("moviecontainer");
   c.innerHTML = "";
@@ -166,22 +152,31 @@ function renderSeries(list) {
   list.forEach(s => c.append(createSeriesCard(s)));
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// 4) applyFilters
-// ────────────────────────────────────────────────────────────────────────────
+// applyFilters — now supports series search as well
 function applyFilters() {
-  if (isSeriesMode) return;
+  const q = document.getElementById("searchInput").value.toLowerCase();
+
+  if (isSeriesMode) {
+    // search series by heb/eng name, actors and short description
+    const filtered = allSeries.filter(s => {
+      const sm = [s["שם הסדרה בעברית"], s["שם הסדרה באנגלית"], s["שחקנים ראשיים"], s["תיאור קצר"]]
+        .some(f => f && f.toLowerCase().includes(q));
+      return sm;
+    });
+    renderSeries(filtered);
+    return;
+  }
+
   const y = document.getElementById("yearFilter").value;
   const r = parseFloat(document.getElementById("ratingFilter").value) || 0;
   const g = document.getElementById("genreFilter").value.toLowerCase();
   const p = document.getElementById("pgFilter").value.toLowerCase();
-  const q = document.getElementById("searchInput").value.toLowerCase();
 
   const filtered = allMovies.filter(m => {
     const ym = !y || m["שנת יציאה"] === y;
     const rm = (parseFloat(m["ציון IMDb"])||0) >= r;
-    const gm = !g || (m["ז'אנר"]||"").toLowerCase().split(",").map(x=>x.trim()).includes(g);
-    const pm = !p || (m["סרט לילדים / מבוגרים"]||"").toLowerCase() === p;
+    const gm = !g || (m["ז'אנר"]||"”).toLowerCase().split(",").map(x=>x.trim()).includes(g);
+    const pm = !p || (m["סרט לילדים / מבוגרים"]||"”).toLowerCase() === p;
     const sm = [m["שם הסרט בעברית"], m["שם הסרט באנגלית"], m["במאי"], m["שחקנים ראשיים"], m["תיאור קצר"]]
                  .some(f => f && f.toLowerCase().includes(q));
     return ym && rm && gm && pm && sm;
@@ -190,9 +185,7 @@ function applyFilters() {
   renderMovies(filtered);
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// 5) loadMovies
-// ────────────────────────────────────────────────────────────────────────────
+// loadMovies
 function loadMovies() {
   isSeriesMode = false;
   document.body.classList.remove("series-mode");
@@ -207,8 +200,6 @@ function loadMovies() {
                      .filter(r => r["שם הסרט בעברית"]);
       renderMovies(allMovies);
 
-      // build filters...
-      // years
       const years = [...new Set(allMovies.map(m=>m["שנת יציאה"]).filter(Boolean))].sort();
       const ySel = document.getElementById("yearFilter");
       years.forEach(y => {
@@ -217,9 +208,8 @@ function loadMovies() {
         ySel.append(o);
       });
 
-      // genres
       const gset = new Set();
-      allMovies.forEach(m => (m["ז'אנר"]||"").split(",").forEach(x=>x.trim()&&gset.add(x.trim())));
+      allMovies.forEach(m => (m["ז'אנר"]||"”).split(",").forEach(x=>x.trim()&&gset.add(x.trim())));
       const gSel = document.getElementById("genreFilter");
       [...gset].sort().forEach(g => {
         const o = document.createElement("option");
@@ -227,7 +217,6 @@ function loadMovies() {
         gSel.append(o);
       });
 
-      // pg
       const pset = new Set(allMovies.map(m=>m["סרט לילדים / מבוגרים"]).filter(Boolean));
       const pSel = document.getElementById("pgFilter");
       [...pset].sort().forEach(pv => {
@@ -239,16 +228,15 @@ function loadMovies() {
     .catch(err => console.error("loadMovies:", err));
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// 6) loadSeries
-// ────────────────────────────────────────────────────────────────────────────
+// loadSeries — keep the search field visible so users can search series
 function loadSeries() {
   isSeriesMode = true;
   document.body.classList.add("series-mode");
 
   document.querySelector("h1").textContent = "📺 הסדרות שלנו";
   document.getElementById("toggleViewBtn").textContent = "🎬 חזרה לסרטים";
-  document.querySelector(".filter-bar").style.display = "none";
+  // keep the filter/search bar visible for series search
+  document.querySelector(".filter-bar").style.display = "";
 
   const url = `https://docs.google.com/spreadsheets/d/${seriesListId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(seriesListName)}`;
   fetch(url)
@@ -261,9 +249,7 @@ function loadSeries() {
     .catch(err => console.error("loadSeries:", err));
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// 7) loadEpisodes
-// ────────────────────────────────────────────────────────────────────────────
+// loadEpisodes
 function loadEpisodes(encodedName) {
   const seriesName = decodeURIComponent(encodedName);
   const container = document.getElementById("moviecontainer");
@@ -304,9 +290,7 @@ function loadEpisodes(encodedName) {
     .catch(err => console.error("loadEpisodes:", err));
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// 8) showEpisodesInSeason
-// ────────────────────────────────────────────────────────────────────────────
+// showEpisodesInSeason
 function showEpisodesInSeason(seriesName, episodesList, seasonNum) {
   const container = document.getElementById("moviecontainer");
   container.innerHTML = `<h3 class="text-center mb-4">${seriesName} – עונה ${seasonNum}</h3>`;
@@ -350,9 +334,7 @@ function showEpisodesInSeason(seriesName, episodesList, seasonNum) {
   });
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// 9) Toggle & init
-// ────────────────────────────────────────────────────────────────────────────
+// Toggle & init
 document.getElementById("toggleViewBtn").addEventListener("click", () => {
   if (isSeriesMode) {
     loadMovies();
@@ -361,5 +343,4 @@ document.getElementById("toggleViewBtn").addEventListener("click", () => {
   }
 });
 
-// נטען אוטומטית לאחר התחברות
 document.addEventListener("DOMContentLoaded", loadMovies);
