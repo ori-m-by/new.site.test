@@ -1,214 +1,272 @@
 // main.js
 
-/*******************************************************
- * 0) Config & state
- *******************************************************/
-const WORKER_URL = "https://royal-lab-55af.orimoshe-by.workers.dev";
+const WORKER = "https://royal-lab-55af.orimoshe-by.workers.dev";
 
-// ⚠ כאן צריך לשים את ה-ID של טבלת הסרטים שלך בגוגל שיטס
-// (לא ה-2PACX..., אלא ה-ID שמופיע ב-URL בין /d/ ל-/edit)
-const MOVIES_SPREADSHEET_ID = "1fipo99hdn-PZv2GwNVBd5boXTnmcuD_d";
+/* טבלאות */
+const MOVIES_SHEET_ID = "1fipo99hdn-PZv2GwNVBd5boXTnmcuD_d";
+const SERIES_LIST_ID  = "1yYRTUq6iRh0dfhFFFpVJiR351jXS2Ll-9VCjsLrTW0Y";
+const EPISODES_SHEET_ID = "1XkZ4in53qT3mCImgrNlqv74JKKW9lG_ZieFGwcJpd5s";
 
-// טבלת הסדרות (ID ושם הגיליון)
-const seriesListId   = "1yYRTUq6iRh0dfhFFFpVJiR351jXS2Ll-9VCjsLrTW0Y";
-const seriesListName = "טבלת סדרות";
-
-// טבלת הפרקים – גיליון נפרד לכל סדרה
-const episodesId     = "1XkZ4in53qT3mCImgrNlqv74JKKW9lG_ZieFGwcJpd5s";
-
-let allMovies    = [];
-let allSeries    = [];
+let allMovies = [];
+let allSeries = [];
 let isSeriesMode = false;
 
-const fallbackImage = "https://raw.githubusercontent.com/ori-m-by/bar-yosef-movie-site/main/תמונה_לא_טעונה.png";
+const fallbackImage =
+  "https://raw.githubusercontent.com/ori-m-by/bar-yosef-movie-site/main/תמונה_לא_טעונה.png";
 
-/*******************************************************
- * עוזר: קבלת ה-ID Token ששמור ב-localStorage
- *******************************************************/
-function getIdToken() {
-  return localStorage.getItem("gs_id_token") || null;
+
+/****************************************************************
+ * 1) הבאת גליון דרך Worker
+ ****************************************************************/
+async function loadSheet(sheetId, sheetName = "") {
+  const token = localStorage.getItem("gs_token");
+
+  const url = `${WORKER}/?sheet=${sheetId}${sheetName ? `&name=${encodeURIComponent(sheetName)}` : ""}`;
+
+  const res = await fetch(url, {
+    headers: {
+      "Authorization": `Bearer ${token}`
+    }
+  });
+
+  if (!res.ok) throw new Error("worker fetch failed");
+
+  return await res.json();
 }
 
-/*******************************************************
- * עוזר: המרת JSON של Google Sheets → מערך אובייקטים
- * sheetSelector: או שם הגיליון (string) או אינדקס (number)
- *******************************************************/
-function extractRowsFromSheet(spreadsheetJson, sheetSelector) {
-  const sheets = spreadsheetJson.sheets || [];
-  let sheet = null;
 
-  if (typeof sheetSelector === "string") {
-    sheet = sheets.find(
-      s => s.properties && s.properties.title === sheetSelector
-    );
-  } else if (typeof sheetSelector === "number") {
-    sheet = sheets[sheetSelector] || null;
-  }
+/****************************************************************
+ * 2) המרה של Google Sheets GridData → מערך אובייקטים
+ ****************************************************************/
+function sheetToObjects(sheetData) {
+  try {
+    const rows = sheetData.sheets[0].data[0].rowData;
 
-  if (!sheet || !sheet.data || !sheet.data.length) return [];
+    const headers = rows[0].values.map(v => v.formattedValue);
 
-  const grid = sheet.data[0];
-  const rows = grid.rowData || [];
-  if (!rows.length) return [];
+    const result = [];
 
-  const headerCells = rows[0].values || [];
-  const headers = headerCells.map(c =>
-    (c && c.formattedValue ? String(c.formattedValue).trim() : "")
-  );
-
-  const result = [];
-
-  for (let i = 1; i < rows.length; i++) {
-    const rd = rows[i];
-    const cells = (rd && rd.values) || [];
-    let obj = {};
-    let hasData = false;
-
-    headers.forEach((h, idx) => {
-      if (!h) return;
-      const cell = cells[idx];
-      const val = cell && cell.formattedValue !== undefined ? cell.formattedValue : "";
-      if (val !== "") hasData = true;
-      obj[h] = val;
+    rows.slice(1).forEach(r => {
+      if (!r.values) return;
+      const obj = {};
+      r.values.forEach((cell, i) => {
+        obj[headers[i]] = cell?.formattedValue || "";
+      });
+      result.push(obj);
     });
 
-    if (hasData) {
-      result.push(obj);
-    }
+    return result;
+
+  } catch (err) {
+    console.error("parse error:", err);
+    return [];
   }
-
-  return result;
 }
 
-/*******************************************************
- * 1) createMovieCard
- *******************************************************/
-function createMovieCard(data) {
-  const heb    = data["שם הסרט בעברית"]       || "";
-  const eng    = data["שם הסרט באנגלית"]      || "";
-  const pic    = data["קישור לתמונה"]          || fallbackImage;
-  const year   = data["שנת יציאה"]            || "";
-  const genre  = data["ז'אנר"]                 || "";
-  const desc   = data["תיאור קצר"]             || "";
-  const dir    = data["במאי"]                  || "";
-  const actors = data["שחקנים ראשיים"]        || "";
-  const writer = data["תסריטאי"]               || "";
-  const prod   = data["מפיק"]                  || "";
-  const score  = data["ציון IMDb"]             || "";
-  const awards = data["פרסים והישגים בולטים"] || "";
-  const pg     = data["סרט לילדים / מבוגרים"] || "";
-  const viewL  = (data["קישור לדרייב"]   || "").trim();
-  const imdbL  = (data["קישור ל-IMDb"]   || "").trim();
 
+/****************************************************************
+ * 3) טעינת סרטים
+ ****************************************************************/
+async function loadMovies() {
+  isSeriesMode = false;
+
+  document.querySelector("h1").textContent = "🎬 הסרטים שלנו";
+  document.getElementById("toggleViewBtn").textContent = "📺 מעבר לתצוגת סדרות";
+
+  const raw = await loadSheet(MOVIES_SHEET_ID);
+  allMovies = sheetToObjects(raw).filter(m => m["שם הסרט בעברית"]);
+
+  renderMovies(allMovies);
+
+  /* ----- בניית סינונים ----- */
+  const years = [...new Set(allMovies.map(m => m["שנת יציאה"]).filter(Boolean))].sort();
+  const ySel = document.getElementById("yearFilter");
+  ySel.innerHTML = '<option value="">כל השנים</option>';
+  years.forEach(y => {
+    ySel.innerHTML += `<option>${y}</option>`;
+  });
+
+  const gset = new Set();
+  allMovies.forEach(m =>
+    (m["ז'אנר"] || "").split(",").forEach(x => x.trim() && gset.add(x.trim()))
+  );
+  const gSel = document.getElementById("genreFilter");
+  gSel.innerHTML = '<option value="">כל הז\'אנרים</option>';
+  [...gset].sort().forEach(g => {
+    gSel.innerHTML += `<option>${g}</option>`;
+  });
+
+  const pset = new Set(allMovies.map(m => m["סרט לילדים / מבוגרים"]).filter(Boolean));
+  const pSel = document.getElementById("pgFilter");
+  pSel.innerHTML = '<option value="">כל סוגי הקהל</option>';
+  [...pset].sort().forEach(pv => {
+    pSel.innerHTML += `<option>${pv}</option>`;
+  });
+}
+
+
+/****************************************************************
+ * 4) טעינת רשימת סדרות
+ ****************************************************************/
+async function loadSeries() {
+  isSeriesMode = true;
+
+  document.querySelector("h1").textContent = "📺 הסדרות שלנו";
+  document.getElementById("toggleViewBtn").textContent = "🎬 חזרה לסרטים";
+
+  const raw = await loadSheet(SERIES_LIST_ID, "טבלת סדרות");
+  allSeries = sheetToObjects(raw).filter(s => s["שם הסדרה בעברית"]);
+
+  renderSeries(allSeries);
+}
+
+
+/****************************************************************
+ * 5) טעינת פרקים
+ ****************************************************************/
+async function loadEpisodes(seriesName) {
+  const raw = await loadSheet(EPISODES_SHEET_ID, seriesName);
+  const eps = sheetToObjects(raw).filter(ep => ep["שם הפרק"]);
+
+  const grouped = {};
+  eps.forEach(ep => {
+    const s = parseInt(ep["עונה"], 10);
+    if (!grouped[s]) grouped[s] = [];
+    grouped[s].push(ep);
+  });
+
+  const container = document.getElementById("moviecontainer");
+  container.innerHTML = `<button class="btn btn-outline-secondary mb-3" onclick="loadSeries()">🔙 חזרה לסדרות</button>`;
+
+  Object.keys(grouped)
+    .map(n => parseInt(n, 10))
+    .sort((a, b) => a - b)
+    .forEach(season => {
+      const btn = document.createElement("button");
+      btn.className = "btn btn-info m-2";
+      btn.textContent = `עונה ${season}`;
+      btn.onclick = () => showEpisodesInSeason(seriesName, grouped[season], season);
+      container.append(btn);
+    });
+}
+
+
+/****************************************************************
+ * 6) הצגת פרקים של עונה
+ ****************************************************************/
+function showEpisodesInSeason(seriesName, eps, seasonNum) {
+  const container = document.getElementById("moviecontainer");
+
+  container.innerHTML =
+    `<h3 class="text-center mb-4">${seriesName} – עונה ${seasonNum}</h3>
+     <button class="btn btn-outline-secondary mb-3"
+       onclick="loadEpisodes('${seriesName}')">🔙 חזרה לעונות</button>`;
+
+  eps.forEach(ep => {
+    const card = document.createElement("div");
+    card.className = "card mb-3";
+
+    const row = document.createElement("div");
+    row.className = "row g-0";
+
+    const colImg = document.createElement("div");
+    colImg.className = "col-md-4";
+    const img = document.createElement("img");
+    img.src = ep["תמונה"] || fallbackImage;
+    img.className = "img-fluid rounded-start";
+    img.onerror = () => img.src = fallbackImage;
+    colImg.append(img);
+
+    const colBody = document.createElement("div");
+    colBody.className = "col-md-8";
+    colBody.innerHTML =
+      `<div class="card-body">
+        <h5 class="card-title">${ep["שם הפרק"]} (פרק ${ep["מספר פרק"]})</h5>
+        <p class="card-text"><small>${ep["תאריך שידור"]}</small></p>
+        <p>${ep["תיאור"]}</p>
+        ${ep["קישור"] ? `<a href="${ep["קישור"]}" target="_blank" class="btn btn-primary">▶️ צפייה</a>` : ""}
+      </div>`;
+
+    row.append(colImg, colBody);
+    card.append(row);
+
+    container.append(card);
+  });
+}
+
+
+/****************************************************************
+ * 7) יצירת כרטיסי סרטים/סדרות
+ ****************************************************************/
+function createMovieCard(m) {
   const card = document.createElement("div");
   card.className = "col-12 col-md-6 mb-4";
 
-  const inner = document.createElement("div");
-  inner.className = "card shadow-sm movie-card";
-  inner.addEventListener("mouseenter", () => inner.classList.add("show-info"));
-  inner.addEventListener("mouseleave", () => inner.classList.remove("show-info"));
+  card.innerHTML = `
+    <div class="card shadow-sm movie-card">
+      <div class="d-flex">
+        <div class="movie-content">
+          <h5>${m["שם הסרט בעברית"]}</h5>
+          <h6 class="text-muted">${m["שם הסרט באנגלית"]}</h6>
+          <p><strong>שנה:</strong> ${m["שנת יציאה"]}<br>
+             <strong>ז'אנר:</strong> ${m["ז'אנר"]}</p>
+          <p>${m["תיאור קצר"]}</p>
 
-  const textCol = document.createElement("div");
-  textCol.className = "movie-content";
-  textCol.innerHTML = `
-    <h5 class="card-title">${heb}</h5>
-    <h6 class="card-subtitle mb-2 text-muted">${eng}</h6>
-    <p><strong>שנה:</strong> ${year}<br><strong>ז'אנר:</strong> ${genre}</p>
-    <p>${desc}</p>
-  `;
-  const txtImg = document.createElement("img");
-  txtImg.src = "https://raw.githubusercontent.com/ori-m-by/bar-yosef-movie-site/main/תמונה%20לאתר%202.jpg";
-  txtImg.alt = "תמונה לאתר 2";
-  txtImg.className = "text-extra-image";
-  textCol.append(txtImg);
+          <div class="extra-info">
+            <p><strong>במאי:</strong> ${m["במאי"]}<br>
+               <strong>שחקנים:</strong> ${m["שחקנים ראשיים"]}<br>
+               <strong>IMDB:</strong> ${m["ציון IMDb"]}</p>
 
-  const extra = document.createElement("div");
-  extra.className = "extra-info";
-  extra.innerHTML = `
-      <p><strong>במאי:</strong> ${dir}<br>
-         <strong>שחקנים:</strong> ${actors}<br>
-         <strong>תסריטאי:</strong> ${writer}<br>
-         <strong>מפיק:</strong> ${prod}<br>
-         <strong>IMDB:</strong> ${score}<br>
-         <strong>פרסים:</strong> ${awards}<br>
-         <strong>קהל יעד:</strong> ${pg}</p>
-      ${viewL.startsWith("http") ? `<a href="${viewL}" target="_blank" class="btn btn-primary mb-2">▶️ צפייה</a>` : ""}
-      ${imdbL.startsWith("http") ? `<a href="${imdbL}" target="_blank" class="btn btn-secondary mb-2 ms-2">📺 IMDb</a>` : ""}
-  `;
-  textCol.append(extra);
+            ${m["קישור לדרייב"] ? `<a href="${m["קישור לדרייב"]}" target="_blank" class="btn btn-primary mb-2">▶️ צפייה</a>` : ""}
+            ${m["קישור ל-IMDb"] ? `<a href="${m["קישור ל-IMDb"]}" target="_blank" class="btn btn-secondary ms-2 mb-2">📺 IMDb</a>` : ""}
+          </div>
+        </div>
 
-  const imgCol = document.createElement("div");
-  imgCol.className = "right-side";
-
-  const img = document.createElement("img");
-  img.src = pic;
-  img.alt = heb;
-  img.className = "movie-image";
-  img.onerror = () => { img.src = fallbackImage; };
-  imgCol.append(img);
-
-  const extraPoster = document.createElement("img");
-  extraPoster.src = "https://raw.githubusercontent.com/ori-m-by/bar-yosef-movie-site/main/תמונה%20לאתר.png";
-  extraPoster.alt = "תמונה לאתר";
-  extraPoster.className = "poster-extra-image";
-  imgCol.append(extraPoster);
-
-  const row = document.createElement("div");
-  row.className = "d-flex";
-  row.append(textCol, imgCol);
-
-  inner.append(row);
-  card.append(inner);
-
-  return card;
-}
-
-/*******************************************************
- * 2) createSeriesCard
- *******************************************************/
-function createSeriesCard(s) {
-  const heb   = s["שם הסדרה בעברית"]       || "";
-  const eng   = s["שם הסדרה באנגלית"]      || "";
-  const desc  = s["תיאור קצר"]             || "";
-  const pic   = s["קישור לתמונה"]          || fallbackImage;
-
-  const card = document.createElement("div");
-  card.className = "col-12 col-md-6 mb-4";
-
-  const inner = document.createElement("div");
-  inner.className = "card shadow-sm movie-card";
-  inner.addEventListener("mouseenter", () => inner.classList.add("show-info"));
-  inner.addEventListener("mouseleave", () => inner.classList.remove("show-info"));
-
-  const img = document.createElement("img");
-  img.src = pic;
-  img.alt = heb;
-  img.className = "card-img-top movie-image";
-  img.onerror = () => { img.src = fallbackImage; };
-
-  const bd = document.createElement("div");
-  bd.className = "card-body";
-  bd.innerHTML = `
-    <h5 class="card-title">${heb}</h5>
-    <h6 class="card-subtitle mb-2 text-muted">${eng}</h6>
-    <p class="card-text">${desc}</p>
-    <div class="extra-info">
-      <p><strong>שם הסדרה:</strong> ${heb}<br>
-         <strong>תיאור:</strong> ${desc}</p>
-      <button class="btn btn-outline-primary" onclick="loadEpisodes('${encodeURIComponent(heb)}')">
-        📂 ראה עונות ופרקים
-      </button>
+        <div class="right-side">
+          <img src="${m["קישור לתמונה"] || fallbackImage}"
+               class="movie-image"
+               onerror="this.src='${fallbackImage}'">
+        </div>
+      </div>
     </div>
   `;
 
-  inner.append(img, bd);
-  card.append(inner);
   return card;
 }
 
-/*******************************************************
- * render helpers
- *******************************************************/
+
+function createSeriesCard(s) {
+  const card = document.createElement("div");
+  card.className = "col-12 col-md-6 mb-4";
+
+  card.innerHTML = `
+    <div class="card shadow-sm movie-card">
+      <img src="${s["קישור לתמונה"] || fallbackImage}"
+           class="card-img-top movie-image"
+           onerror="this.src='${fallbackImage}'">
+
+      <div class="card-body">
+        <h5>${s["שם הסדרה בעברית"]}</h5>
+        <h6 class="text-muted">${s["שם הסדרה באנגלית"]}</h6>
+        <p>${s["תיאור קצר"]}</p>
+
+        <div class="extra-info">
+          <button class="btn btn-outline-primary"
+            onclick="loadEpisodes('${s["שם הסדרה בעברית"]}')">
+            📂 ראה עונות ופרקים
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  return card;
+}
+
+
+/****************************************************************
+ * 8) הצגה
+ ****************************************************************/
 function renderMovies(list) {
   const c = document.getElementById("moviecontainer");
   c.innerHTML = "";
@@ -218,30 +276,21 @@ function renderMovies(list) {
 function renderSeries(list) {
   const c = document.getElementById("moviecontainer");
   c.innerHTML = "";
-  const back = document.createElement("button");
-  back.className = "btn btn-outline-secondary mb-3";
-  back.textContent = "🔙 חזרה לסדרות";
-  back.onclick = loadSeries;
-  c.append(back);
   list.forEach(s => c.append(createSeriesCard(s)));
 }
 
-/*******************************************************
- * applyFilters – תומך גם בסדרות
- *******************************************************/
+
+/****************************************************************
+ * 9) סינון
+ ****************************************************************/
 function applyFilters() {
   const q = document.getElementById("searchInput").value.toLowerCase();
 
   if (isSeriesMode) {
-    const filtered = allSeries.filter(s => {
-      const sm = [
-        s["שם הסדרה בעברית"],
-        s["שם הסדרה באנגלית"],
-        s["שחקנים ראשיים"],
-        s["תיאור קצר"]
-      ].some(f => f && String(f).toLowerCase().includes(q));
-      return sm;
-    });
+    const filtered = allSeries.filter(s =>
+      [s["שם הסדרה בעברית"], s["שם הסדרה באנגלית"], s["תיאור קצר"]]
+        .some(v => v && v.toLowerCase().includes(q))
+    );
     renderSeries(filtered);
     return;
   }
@@ -254,250 +303,29 @@ function applyFilters() {
   const filtered = allMovies.filter(m => {
     const ym = !y || m["שנת יציאה"] === y;
     const rm = (parseFloat(m["ציון IMDb"]) || 0) >= r;
-    const gm = !g || (m["ז'אנר"] || "").toLowerCase().split(",").map(x => x.trim()).includes(g);
+    const gm = !g || (m["ז'אנר"] || "").toLowerCase().includes(g);
     const pm = !p || (m["סרט לילדים / מבוגרים"] || "").toLowerCase() === p;
-    const sm = [
-      m["שם הסרט בעברית"],
-      m["שם הסרט באנגלית"],
-      m["במאי"],
-      m["שחקנים ראשיים"],
-      m["תיאור קצר"]
-    ].some(f => f && String(f).toLowerCase().includes(q));
+
+    const sm = [m["שם הסרט בעברית"], m["שם הסרט באנגלית"], m["במאי"], m["שחקנים ראשיים"], m["תיאור קצר"]]
+      .some(v => v && v.toLowerCase().includes(q));
+
     return ym && rm && gm && pm && sm;
   });
 
   renderMovies(filtered);
 }
 
-/*******************************************************
- * loadMovies – דרך ה-Worker (JSON, לא CSV)
- *******************************************************/
-async function loadMovies() {
-  isSeriesMode = false;
-  document.body.classList.remove("series-mode");
-  document.querySelector("h1").textContent = "🎬 הסרטים שלנו";
-  document.getElementById("toggleViewBtn").textContent = "📺 מעבר לתצוגת סדרות";
-  document.querySelector(".filter-bar").style.display = "";
 
-  if (!MOVIES_SPREADSHEET_ID || MOVIES_SPREADSHEET_ID.startsWith("PUT_")) {
-    console.error("MOVIES_SPREADSHEET_ID לא הוגדר. עדכן אותו ב-main.js");
-    document.getElementById("moviecontainer").innerHTML =
-      `<div class="text-center py-5">⚠ צריך להגדיר את MOVIES_SPREADSHEET_ID ב-main.js</div>`;
-    return;
-  }
-
-  const token = getIdToken();
-  if (!token) {
-    console.error("אין ID Token – המשתמש לא מחובר.");
-    return;
-  }
-
-  try {
-    const res = await fetch(`${WORKER_URL}?sheet=${MOVIES_SPREADSHEET_ID}`, {
-      headers: { "Authorization": "Bearer " + token }
-    });
-    if (!res.ok) {
-      console.error("loadMovies: worker response not ok", await res.text());
-      return;
-    }
-    const data = await res.json();
-    // מניחים שטבלת הסרטים היא הגיליון הראשון (index 0)
-    allMovies = extractRowsFromSheet(data, 0)
-      .filter(r => r["שם הסרט בעברית"]);
-
-    renderMovies(allMovies);
-
-    // מילוי פילטרים
-    const years = [...new Set(allMovies.map(m => m["שנת יציאה"]).filter(Boolean))].sort();
-    const ySel = document.getElementById("yearFilter");
-    ySel.innerHTML = `<option value="">כל השנים</option>`;
-    years.forEach(y => {
-      const o = document.createElement("option");
-      o.value = o.textContent = y;
-      ySel.append(o);
-    });
-
-    const gset = new Set();
-    allMovies.forEach(m =>
-      (m["ז'אנר"] || "").split(",").forEach(x => x.trim() && gset.add(x.trim()))
-    );
-    const gSel = document.getElementById("genreFilter");
-    gSel.innerHTML = `<option value="">כל הז'אנרים</option>`;
-    [...gset].sort().forEach(g => {
-      const o = document.createElement("option");
-      o.value = o.textContent = g;
-      gSel.append(o);
-    });
-
-    const pset = new Set(allMovies.map(m => m["סרט לילדים / מבוגרים"]).filter(Boolean));
-    const pSel = document.getElementById("pgFilter");
-    pSel.innerHTML = `<option value="">כל סוגי הקהל</option>`;
-    [...pset].sort().forEach(pv => {
-      const o = document.createElement("option");
-      o.value = o.textContent = pv;
-      pSel.append(o);
-    });
-
-  } catch (err) {
-    console.error("loadMovies:", err);
-  }
-}
-
-/*******************************************************
- * loadSeries – גם דרך ה-Worker
- *******************************************************/
-async function loadSeries() {
-  isSeriesMode = true;
-  document.body.classList.add("series-mode");
-
-  document.querySelector("h1").textContent = "📺 הסדרות שלנו";
-  document.getElementById("toggleViewBtn").textContent = "🎬 חזרה לסרטים";
-  document.querySelector(".filter-bar").style.display = "";
-
-  const token = getIdToken();
-  if (!token) {
-    console.error("אין ID Token – המשתמש לא מחובר.");
-    return;
-  }
-
-  try {
-    const res = await fetch(`${WORKER_URL}?sheet=${seriesListId}`, {
-      headers: { "Authorization": "Bearer " + token }
-    });
-    if (!res.ok) {
-      console.error("loadSeries: worker response not ok", await res.text());
-      return;
-    }
-    const data = await res.json();
-    // כאן אנחנו משתמשים בשם הגיליון "טבלת סדרות"
-    allSeries = extractRowsFromSheet(data, seriesListName)
-      .filter(r => r["שם הסדרה בעברית"]);
-
-    renderSeries(allSeries);
-  } catch (err) {
-    console.error("loadSeries:", err);
-  }
-}
-
-/*******************************************************
- * loadEpisodes – גיליון נפרד לכל סדרה, בתוך אותו Spreadsheet
- *******************************************************/
-async function loadEpisodes(encodedName) {
-  const seriesName = decodeURIComponent(encodedName);
-  const container = document.getElementById("moviecontainer");
-  container.innerHTML = `<div class="text-center py-5">🔄 טוען פרקים של ${seriesName}…</div>`;
-
-  const token = getIdToken();
-  if (!token) {
-    console.error("אין ID Token – המשתמש לא מחובר.");
-    return;
-  }
-
-  try {
-    const res = await fetch(`${WORKER_URL}?sheet=${episodesId}`, {
-      headers: { "Authorization": "Bearer " + token }
-    });
-    if (!res.ok) {
-      console.error("loadEpisodes: worker response not ok", await res.text());
-      return;
-    }
-    const data = await res.json();
-    // כאן אנחנו מניחים שכל סדרה היא גיליון נפרד בשם הסדרה
-    const eps = extractRowsFromSheet(data, seriesName)
-      .filter(ep => ep["שם הפרק"]);
-
-    const grouped = {};
-    eps.forEach(ep => {
-      const s = parseInt(ep["עונה"], 10);
-      if (!grouped[s]) grouped[s] = [];
-      grouped[s].push(ep);
-    });
-
-    container.innerHTML = "";
-    const back = document.createElement("button");
-    back.className = "btn btn-outline-secondary mb-3";
-    back.textContent = "🔙 חזרה לסדרות";
-    back.onclick = loadSeries;
-    container.append(back);
-
-    Object.keys(grouped)
-      .map(n => parseInt(n, 10))
-      .sort((a, b) => a - b)
-      .forEach(seasonNum => {
-        const btn = document.createElement("button");
-        btn.className = "btn btn-info m-2";
-        btn.textContent = `עונה ${seasonNum}`;
-        btn.onclick = () => showEpisodesInSeason(seriesName, grouped[seasonNum], seasonNum);
-        container.append(btn);
-      });
-
-  } catch (err) {
-    console.error("loadEpisodes:", err);
-  }
-}
-
-/*******************************************************
- * showEpisodesInSeason
- *******************************************************/
-function showEpisodesInSeason(seriesName, episodesList, seasonNum) {
-  const container = document.getElementById("moviecontainer");
-  container.innerHTML = `<h3 class="text-center mb-4">${seriesName} – עונה ${seasonNum}</h3>`;
-
-  const backToSeasons = document.createElement("button");
-  backToSeasons.className = "btn btn-outline-secondary mb-3";
-  backToSeasons.textContent = "🔙 חזרה לעונות";
-  backToSeasons.onclick = () => loadEpisodes(encodeURIComponent(seriesName));
-  container.append(backToSeasons);
-
-  episodesList.forEach(ep => {
-    const card = document.createElement("div");
-    card.className = "card mb-3";
-
-    const row = document.createElement("div");
-    row.className = "row g-0";
-
-    const colImg = document.createElement("div");
-    colImg.className = "col-md-4";
-    const img = document.createElement("img");
-    img.src = ep["תמונה"] || fallbackImage;
-    img.className = "img-fluid rounded-start";
-    img.onerror = () => { img.src = fallbackImage; };
-    colImg.append(img);
-
-    const colBody = document.createElement("div");
-    colBody.className = "col-md-8";
-    const bd = document.createElement("div");
-    bd.className = "card-body";
-    bd.innerHTML = `
-      <h5 class="card-title">${ep["שם הפרק"]} (פרק ${ep["מספר פרק"]})</h5>
-      <p class="card-text"><small class="text-muted">תאריך: ${ep["תאריך שידור"]}</small></p>
-      <p class="card-text">${ep["תיאור"]}</p>
-      ${ep["קישור"] ? `<a href="${ep["קישור"]}" target="_blank" class="btn btn-primary">▶️ צפייה</a>` : ""}
-    `;
-    colBody.append(bd);
-
-    row.append(colImg, colBody);
-    card.append(row);
-    container.append(card);
-  });
-}
-
-/*******************************************************
- * Toggle בין סרטים/סדרות
- *******************************************************/
+/****************************************************************
+ * 10) כפתור מעבר
+ ****************************************************************/
 document.getElementById("toggleViewBtn").addEventListener("click", () => {
-  if (isSeriesMode) {
-    loadMovies();
-  } else {
-    loadSeries();
-  }
+  if (isSeriesMode) loadMovies();
+  else loadSeries();
 });
 
-/*******************************************************
- * initApp – נקרא מתוך index.html אחרי שהמשתמש מורשה
- *******************************************************/
-window.initApp = function () {
-  if (window.__appAlreadyInit) return;
-  window.__appAlreadyInit = true;
-  loadMovies();
-};
+
+/****************************************************************
+ * 11) התחלה
+ ****************************************************************/
+document.addEventListener("DOMContentLoaded", loadMovies);
