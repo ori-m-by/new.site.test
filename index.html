@@ -1,7 +1,6 @@
 <!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
-  
   <meta charset="UTF-8">
   <title>🎬 סרטים לצפייה</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -9,73 +8,88 @@
   <!-- Google Identity Services -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 
-  <!-- מסתירים עד בדיקת הרשאה -->
-  <style>html { visibility: hidden; }</style>
+  <!-- מסתירים את ה-HTML עד שנדע אם המשתמש מחובר / מורשה -->
+  <style>
+    html { visibility: hidden; }
+  </style>
 
   <script>
     /*****************************************************
-     * 1) CONFIG – טבלת מיילים מורשים
+     * 1) CONFIG – כתובת ה-Worker והטבלה לבדיקת הרשאות
      *****************************************************/
-    const APPROVED_SHEET_ID  = "1EYGrBVteGM4_kXhc6owSxicwIrMp6FkzV74AjZdeAeM";
-    const APPROVED_SHEET_GID = "0"; 
-    const APPROVED_SHEET_URL =
-      `https://docs.google.com/spreadsheets/d/${APPROVED_SHEET_ID}/export?format=csv&gid=${APPROVED_SHEET_GID}`;
+    const WORKER_URL = "https://royal-lab-55af.orimoshe-by.workers.dev";
 
+    // זה ה-ID של הטבלה "הרשאות גישה" (המיילים המורשים)
+    const ACCESS_SHEET_ID = "1EYGrBVteGM4_kXhc6owSxicwIrMp6FkzV74AjZdeAeM";
+
+    // Client ID של Google Login (כבר היה אצלך)
     const GOOGLE_CLIENT_ID =
       "1083389812447-mst37a55gquvk05cuc8utqsuunfar6hb.apps.googleusercontent.com";
 
     /*****************************************************
-     * 2) מחזיר TRUE אם המייל נמצא בטבלת המורשים
+     * 2) בדיקת הרשאה דרך ה-Worker (עם ID Token)
      *****************************************************/
-    async function isEmailAllowed(email) {
+    async function checkAuthorized(idToken) {
       try {
-        const res = await fetch(APPROVED_SHEET_URL);
-        if (!res.ok) return false;
+        const res = await fetch(`${WORKER_URL}?sheet=${ACCESS_SHEET_ID}`, {
+          headers: {
+            "Authorization": "Bearer " + idToken
+          }
+        });
 
-        const text = await res.text();
-        const clean = text.replace(/^\uFEFF/, "");
-        const rows = clean.trim().split("\n");
-
-        const emails = rows
-          .slice(1)
-          .map(r => r.split(",")[0].trim().toLowerCase());
-
-        return emails.includes(email.toLowerCase());
+        // אם ה-Worker מחזיר 200 → המשתמש גם מחובר וגם רשאי
+        return res.ok;
       } catch (e) {
-        console.error("Error reading allowed emails CSV:", e);
+        console.error("Error checking authorization via worker:", e);
         return false;
       }
     }
 
     /*****************************************************
-     * 3) callback של התחברות גוגל
+     * 3) callback של התחברות גוגל (נקרא ע"י GIS)
      *****************************************************/
     async function handleCredentialResponse(res) {
       try {
-        const data = parseJwt(res.credential);
+        const idToken = res.credential;
+        const data = parseJwt(idToken);
         const email = data.email;
 
-        const ok = await isEmailAllowed(email);
+        // בדיקה מול ה-Worker אם המשתמש באמת מורשה
+        const ok = await checkAuthorized(idToken);
+
         if (!ok) {
           alert("❌ אין לך הרשאה להיכנס לאתר.");
+          // מנקים כל מה ששמרנו (ליתר ביטחון)
+          localStorage.removeItem("gs_auth_email");
+          localStorage.removeItem("gs_id_token");
+          // משאירים את כפתור הלוגין
+          document.getElementById("gLoginBtn").style.display = "block";
+          document.getElementById("appContent").style.display = "none";
           return;
         }
 
-        // שמירת מצב התחברות
+        // אם עבר – שומרים גם מייל וגם ID Token
         localStorage.setItem("gs_auth_email", email);
+        localStorage.setItem("gs_id_token", idToken);
 
-        // הצגת האתר
+        // מציגים את התוכן הראשי, מסתירים כפתור לוגין
         document.getElementById("gLoginBtn").style.display = "none";
-        document.documentElement.style.visibility = "visible";
         document.getElementById("appContent").style.display = "block";
+        document.documentElement.style.visibility = "visible";
+
+        // מפעילים את האפליקציה (טעינת סרטים וכו') – מוגדר ב-main.js
+        if (window.initApp) {
+          window.initApp();
+        }
 
       } catch (e) {
         console.error("Login error:", e);
+        alert("בעיית התחברות, נסה שוב.");
       }
     }
 
     /*****************************************************
-     * 4) decode JWT
+     * 4) decode JWT (כבר היה אצלך)
      *****************************************************/
     function parseJwt(token) {
       const base64Url = token.split('.')[1];
@@ -89,20 +103,35 @@
     }
 
     /*****************************************************
-     * 5) startLoginFlow – נטען עם onload
+     * 5) startLoginFlow – רץ ב-onload
+     *    בודק אם יש ID Token שמור ומורשה → נכנס אוטומטית
+     *    אחרת → מציג כפתור גוגל
      *****************************************************/
     async function startLoginFlow() {
-      const saved = localStorage.getItem("gs_auth_email");
+      const savedEmail = localStorage.getItem("gs_auth_email");
+      const savedToken = localStorage.getItem("gs_id_token");
 
-      // אם כבר מחובר
-      if (saved && await isEmailAllowed(saved)) {
-        document.documentElement.style.visibility = "visible";
-        document.getElementById("appContent").style.display = "block";
-        document.getElementById("gLoginBtn").style.display = "none";
-        return;
+      // אם יש טוקן שמור – נבדוק מול ה-Worker אם עדיין תקין ומורשה
+      if (savedToken) {
+        const ok = await checkAuthorized(savedToken);
+        if (ok) {
+          // המשתמש מורשה – מציגים תוכן
+          document.getElementById("gLoginBtn").style.display = "none";
+          document.getElementById("appContent").style.display = "block";
+          document.documentElement.style.visibility = "visible";
+
+          if (window.initApp) {
+            window.initApp();
+          }
+          return;
+        } else {
+          // טוקן לא תקף / לא מורשה
+          localStorage.removeItem("gs_auth_email");
+          localStorage.removeItem("gs_id_token");
+        }
       }
 
-      // מציגים כפתור גוגל
+      // אם לא מחובר – מציגים כפתור גוגל
       google.accounts.id.initialize({
         client_id: GOOGLE_CLIENT_ID,
         callback: handleCredentialResponse
@@ -113,125 +142,126 @@
         { theme: "outline", size: "large" }
       );
 
+      document.getElementById("gLoginBtn").style.display = "block";
+      document.getElementById("appContent").style.display = "none";
       document.documentElement.style.visibility = "visible";
     }
 
     window.onload = startLoginFlow;
   </script>
 
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Bootstrap -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 
-<!-- ❗ כל ה-CSS המקורי שלך ללא שינוי ❗ -->
-<style>
-.bug-report-button {
-  position: fixed;
-  bottom: 20px;
-  right: 20px;
-  width: 48px;
-  height: 48px;
-  background: #dc3545;
-  color: #fff;
-  font-size: 24px;
-  line-height: 48px;
-  text-align: center;
-  border-radius: 50%;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-  text-decoration: none;
-  z-index: 1000;
-  cursor: pointer;
-}
-.bug-report-button::after {
-  content: attr(data-tooltip);
-  position: absolute;
-  bottom: 60px;
-  right: 50%;
-  transform: translateX(50%);
-  background: rgba(0,0,0,0.8);
-  color: #fff;
-  padding: 6px 10px;
-  border-radius: 4px;
-  white-space: nowrap;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.2s ease;
-  font-size: 14px;
-}
-.bug-report-button:hover::after { opacity: 1; }
+  <!-- CSS שלך (כמעט בלי שינוי) -->
+  <style>
+    .bug-report-button {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      width: 48px;
+      height: 48px;
+      background: #dc3545;
+      color: #fff;
+      font-size: 24px;
+      line-height: 48px;
+      text-align: center;
+      border-radius: 50%;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+      text-decoration: none;
+      z-index: 1000;
+      cursor: pointer;
+    }
+    .bug-report-button::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      bottom: 60px;
+      right: 50%;
+      transform: translateX(50%);
+      background: rgba(0,0,0,0.8);
+      color: #fff;
+      padding: 6px 10px;
+      border-radius: 4px;
+      white-space: nowrap;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+      font-size: 14px;
+    }
+    .bug-report-button:hover::after { opacity: 1; }
 
-.movie-card {
-  position: relative;
-  overflow: visible;
-  transition: transform 0.3s ease;
-}
-body:not(.series-mode) .movie-card:hover {
-  transform: scale(1.03);
-}
-.movie-content {
-  width: 60%;
-  padding: 15px;
-  box-sizing: border-box;
-}
-.text-extra-image {
-  width: 100%;
-  border-radius: 4px;
-  margin-top: 10px;
-}
-.right-side {
-  width: 40%;
-  padding: 15px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-.right-side .movie-image {
-  width: 100%;
-  border-radius: 8px;
-}
-.poster-extra-image {
-  width: 100%;
-  border-radius: 4px;
-  margin-top: 10px;
-}
-.extra-info {
-  display: none;
-  background: rgba(255,255,255,0.95);
-  padding: 20px;
-}
-.movie-card.show-info .extra-info {
-  display: block;
-}
-.movie-card.show-info .text-extra-image,
-.movie-card.show-info .poster-extra-image {
-  display: none !important;
-}
-.filter-bar {
-  display: flex;
-  gap: 10px;
-  justify-content: center;
-  margin-bottom: 30px;
-}
-.trailer-container {
-  width: 100%;
-  height: 200px;
-  border-radius: 10px;
-  overflow: hidden;
-  visibility: hidden;
-}
-body:not(.series-mode) .movie-card.show-info .trailer-container {
-  visibility: visible;
-}
-
-/* עיצוב קטן לכפתור המבורגר */
-.filter-hamburger {
-  font-size: 20px;
-  padding: 8px 10px;
-  line-height: 1;
-}
-.dropdown-menu .form-select,
-.dropdown-menu .form-control {
-  min-width: 220px;
-}
-</style>
+    .movie-card {
+      position: relative;
+      overflow: visible;
+      transition: transform 0.3s ease;
+    }
+    body:not(.series-mode) .movie-card:hover {
+      transform: scale(1.03);
+    }
+    .movie-content {
+      width: 60%;
+      padding: 15px;
+      box-sizing: border-box;
+    }
+    .text-extra-image {
+      width: 100%;
+      border-radius: 4px;
+      margin-top: 10px;
+    }
+    .right-side {
+      width: 40%;
+      padding: 15px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .right-side .movie-image {
+      width: 100%;
+      border-radius: 8px;
+    }
+    .poster-extra-image {
+      width: 100%;
+      border-radius: 4px;
+      margin-top: 10px;
+    }
+    .extra-info {
+      display: none;
+      background: rgba(255,255,255,0.95);
+      padding: 20px;
+    }
+    .movie-card.show-info .extra-info {
+      display: block;
+    }
+    .movie-card.show-info .text-extra-image,
+    .movie-card.show-info .poster-extra-image {
+      display: none !important;
+    }
+    .filter-bar {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      margin-bottom: 30px;
+    }
+    .trailer-container {
+      width: 100%;
+      height: 200px;
+      border-radius: 10px;
+      overflow: hidden;
+      visibility: hidden;
+    }
+    body:not(.series-mode) .movie-card.show-info .trailer-container {
+      visibility: visible;
+    }
+    .filter-hamburger {
+      font-size: 20px;
+      padding: 8px 10px;
+      line-height: 1;
+    }
+    .dropdown-menu .form-select,
+    .dropdown-menu .form-control {
+      min-width: 220px;
+    }
+  </style>
 
 </head>
 <body class="bg-light">
@@ -245,16 +275,18 @@ body:not(.series-mode) .movie-card.show-info .trailer-container {
     <div class="container py-5">
       <h1 class="text-center mb-3">🎬 הסרטים שלנו</h1>
 
-      <!-- החיפוש + כפתור המבורגר מתחת לכותרת -->
+      <!-- החיפוש + כפתור המבורגר -->
       <div class="filter-bar text-center mb-3">
         <div class="d-flex justify-content-center align-items-center gap-2" style="width:100%;">
-          <input type="text" id="searchInput" class="form-control" style="min-width:280px; max-width:720px;"
-            placeholder="חיפוש לפי שם, במאי, שחקנים, תיאור" oninput="applyFilters()">
+          <input type="text" id="searchInput" class="form-control"
+                 style="min-width:280px; max-width:720px;"
+                 placeholder="חיפוש לפי שם, במאי, שחקנים, תיאור"
+                 oninput="applyFilters()">
 
           <div class="dropdown">
             <button id="filterBtn" class="btn btn-outline-secondary filter-hamburger"
-              type="button" data-bs-toggle="dropdown" aria-expanded="false"
-              title="סינון" aria-label="סינון">
+                    type="button" data-bs-toggle="dropdown" aria-expanded="false"
+                    title="סינון" aria-label="סינון">
               ☰
             </button>
             <div class="dropdown-menu dropdown-menu-end p-3" style="min-width: 280px;">
@@ -305,9 +337,9 @@ body:not(.series-mode) .movie-card.show-info .trailer-container {
     </div>
 
     <a href="https://docs.google.com/forms/d/e/1FAIpQLSePUwUmQBi4iJN5FjptxlrWIuDG7z1FEe7lSyVmBkzo6eRVMw/viewform?usp=dialog"
-      target="_blank"
-      class="bug-report-button"
-      data-tooltip="טופס תקלות<br>דיווח על פרק/סרט">
+       target="_blank"
+       class="bug-report-button"
+       data-tooltip="טופס תקלות<br>דיווח על פרק/סרט">
       ⚠️
     </a>
 
@@ -315,7 +347,9 @@ body:not(.series-mode) .movie-card.show-info .trailer-container {
 
   <!-- ספריות -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+
+  <!-- כבר לא צריך PapaParse כי אנחנו לא עובדים עם CSV ישיר -->
+  <!-- <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script> -->
 
   <!-- הקוד של האתר -->
   <script src="main.js"></script>
