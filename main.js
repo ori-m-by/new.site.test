@@ -390,5 +390,3 @@ document.getElementById("toggleViewBtn").addEventListener("click", () => {
 document.addEventListener("DOMContentLoaded", () => {
   loadMovies().catch(console.error);
 });
-
-
