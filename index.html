@@ -33,8 +33,7 @@
         if (!res.ok) return false;
 
         const text = await res.text();
-        const clean = text.replace(/^
-\uFEFF/, "");
+        const clean = text.replace(/^\uFEFF/, "");
         const rows = clean.trim().split("\n");
 
         const emails = rows
