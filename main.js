@@ -175,8 +175,8 @@ function applyFilters() {
   const filtered = allMovies.filter(m => {
     const ym = !y || m["שנת יציאה"] === y;
     const rm = (parseFloat(m["ציון IMDb"])||0) >= r;
-    const gm = !g || (m["ז'אנר"]||"”).toLowerCase().split(",").map(x=>x.trim()).includes(g);
-    const pm = !p || (m["סרט לילדים / מבוגרים"]||"”).toLowerCase() === p;
+    const gm = !g || (m["ז'אנר"]||"").toLowerCase().split(",").map(x=>x.trim()).includes(g);
+    const pm = !p || (m["סרט לילדים / מבוגרים"]||"").toLowerCase() === p;
     const sm = [m["שם הסרט בעברית"], m["שם הסרט באנגלית"], m["במאי"], m["שחקנים ראשיים"], m["תיאור קצר"]]
                  .some(f => f && f.toLowerCase().includes(q));
     return ym && rm && gm && pm && sm;
@@ -209,7 +209,7 @@ function loadMovies() {
       });
 
       const gset = new Set();
-      allMovies.forEach(m => (m["ז'אנר"]||"”).split(",").forEach(x=>x.trim()&&gset.add(x.trim())));
+      allMovies.forEach(m => (m["ז'אנר"]||"").split(",").forEach(x=>x.trim()&&gset.add(x.trim())));
       const gSel = document.getElementById("genreFilter");
       [...gset].sort().forEach(g => {
         const o = document.createElement("option");
