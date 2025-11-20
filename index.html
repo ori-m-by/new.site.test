@@ -1,7 +1,6 @@
 <!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
-
   <meta charset="UTF-8">
   <title>🎬 סרטים לצפייה</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -14,98 +13,86 @@
 
   <script>
     /*****************************************************
-     * 1) CONFIG – טבלת מיילים מורשים
+     * 1) CONFIG – טבלת מיילים מורשים + Worker
      *****************************************************/
-    const WORKER_URL = "https://royal-lab-55af.orimoshe-by.workers.dev";
+    const APPROVED_SHEET_ID  = "1EYGrBVteGM4_kXhc6owSxicwIrMp6FkzV74AjZdeAeM";
+    const APPROVED_SHEET_NAME = "מיילים מורשים";
 
-    const APPROVED_SHEET_ID = "1EYGrBVteGM4_kXhc6owSxicwIrMp6FkzV74AjZdeAeM";
+    const WORKER_ENDPOINT = "https://royal-lab-55af.orimoshe-by.workers.dev";
 
     const GOOGLE_CLIENT_ID =
       "1083389812447-mst37a55gquvk05cuc8utqsuunfar6hb.apps.googleusercontent.com";
 
-
     /*****************************************************
-     * 2) בקשה ל־Worker עם ID Token
+     * 2) בקשה ל־Worker שמחזיר valueRanges
      *****************************************************/
-    async function callWorker(sheetId, sheetName = "") {
-      try {
-        const token = googleToken;
+    async function fetchSheetFromWorker(sheetId, sheetName = "") {
+      const url = `${WORKER_ENDPOINT}?sheet=${sheetId}${
+        sheetName ? `&name=${encodeURIComponent(sheetName)}` : ""
+      }`;
 
-        const url = `${WORKER_URL}/?sheet=${sheetId}${sheetName ? `&name=${encodeURIComponent(sheetName)}` : ""}`;
-
-        const res = await fetch(url, {
-          headers: {
-            "Authorization": `Bearer ${token}`
-          }
-        });
-
-        if (!res.ok) throw new Error("Worker error");
-
-        return await res.json();
-
-      } catch (err) {
-        console.error("Error calling worker:", err);
-        return null;
+      const res = await fetch(url);
+      if (!res.ok) {
+        console.error("Worker error:", res.status, await res.text());
+        throw new Error("Worker error " + res.status);
       }
+      return await res.json();
     }
-
 
     /*****************************************************
      * 3) מחזיר TRUE אם המייל נמצא בטבלת המורשים
      *****************************************************/
     async function isEmailAllowed(email) {
-      const data = await callWorker(APPROVED_SHEET_ID);
-
-      if (!data || !data.sheets) return false;
-
       try {
-        const rows = data.sheets[0].data[0].rowData;
+        const data = await fetchSheetFromWorker(APPROVED_SHEET_ID, APPROVED_SHEET_NAME);
 
-        const list = rows
+        const values = data.valueRanges?.[0]?.values;
+        if (!values || values.length < 2) {
+          console.error("No rows in allowed emails sheet");
+          return false;
+        }
+
+        // שורה ראשונה כותרת, השאר מיילים
+        const emails = values
           .slice(1)
-          .map(r => r.values?.[0]?.formattedValue?.trim().toLowerCase())
+          .map(row => (row[0] || "").trim().toLowerCase())
           .filter(Boolean);
 
-        return list.includes(email.toLowerCase());
-
-      } catch (err) {
-        console.error("email parse error:", err);
+        return emails.includes(email.toLowerCase());
+      } catch (e) {
+        console.error("Error checking allowed emails:", e);
         return false;
       }
     }
 
-
     /*****************************************************
      * 4) callback של התחברות גוגל
      *****************************************************/
-    let googleToken = null;
+    function handleCredentialResponse(res) {
+      (async () => {
+        try {
+          const data = parseJwt(res.credential);
+          const email = data.email;
 
-    async function handleCredentialResponse(res) {
-      try {
-        const data = parseJwt(res.credential);
-        const email = data.email;
-        googleToken = res.credential;
+          const ok = await isEmailAllowed(email);
+          if (!ok) {
+            alert("❌ אין לך הרשאה להיכנס לאתר.");
+            return;
+          }
 
-        const ok = await isEmailAllowed(email);
-        if (!ok) {
-          alert("❌ אין לך הרשאה להיכנס לאתר.");
-          return;
+          // שמירת מייל מאושר
+          localStorage.setItem("gs_auth_email", email);
+
+          // הצגת האתר
+          document.getElementById("gLoginBtn").style.display = "none";
+          document.documentElement.style.visibility = "visible";
+          document.getElementById("appContent").style.display = "block";
+
+        } catch (e) {
+          console.error("Login error:", e);
         }
-
-        // שמירה
-        localStorage.setItem("gs_email", email);
-        localStorage.setItem("gs_token", googleToken);
-
-        // הצגת האתר
-        document.getElementById("gLoginBtn").style.display = "none";
-        document.documentElement.style.visibility = "visible";
-        document.getElementById("appContent").style.display = "block";
-
-      } catch (e) {
-        console.error("Login error:", e);
-      }
+      })();
     }
-
 
     /*****************************************************
      * 5) decode JWT
@@ -121,24 +108,21 @@
       return JSON.parse(jsonPayload);
     }
 
-
     /*****************************************************
-     * 6) startLoginFlow
+     * 6) startLoginFlow – נטען עם onload
      *****************************************************/
     async function startLoginFlow() {
-      const savedEmail = localStorage.getItem("gs_email");
-      const savedToken = localStorage.getItem("gs_token");
+      const saved = localStorage.getItem("gs_auth_email");
 
-      if (savedEmail && savedToken) {
-        googleToken = savedToken;
-        if (await isEmailAllowed(savedEmail)) {
-          document.documentElement.style.visibility = "visible";
-          document.getElementById("appContent").style.display = "block";
-          document.getElementById("gLoginBtn").style.display = "none";
-          return;
-        }
+      // אם כבר מחובר ומשויך לטבלת המורשים
+      if (saved && await isEmailAllowed(saved)) {
+        document.documentElement.style.visibility = "visible";
+        document.getElementById("appContent").style.display = "block";
+        document.getElementById("gLoginBtn").style.display = "none";
+        return;
       }
 
+      // מציגים כפתור גוגל
       google.accounts.id.initialize({
         client_id: GOOGLE_CLIENT_ID,
         callback: handleCredentialResponse
@@ -153,32 +137,134 @@
     }
 
     window.onload = startLoginFlow;
-
-    // נחשוף ל-main.js
-    window.callWorker = callWorker;
-
   </script>
 
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 
   <!-- CSS המקורי שלך -->
   <style>
-    /* לא נוגע — העתקתי 1:1 את כל ה־CSS שלך */
-  </style>
+  .bug-report-button {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 48px;
+    height: 48px;
+    background: #dc3545;
+    color: #fff;
+    font-size: 24px;
+    line-height: 48px;
+    text-align: center;
+    border-radius: 50%;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    text-decoration: none;
+    z-index: 1000;
+    cursor: pointer;
+  }
+  .bug-report-button::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: 60px;
+    right: 50%;
+    transform: translateX(50%);
+    background: rgba(0,0,0,0.8);
+    color: #fff;
+    padding: 6px 10px;
+    border-radius: 4px;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+    font-size: 14px;
+  }
+  .bug-report-button:hover::after { opacity: 1; }
 
+  .movie-card {
+    position: relative;
+    overflow: visible;
+    transition: transform 0.3s ease;
+  }
+  body:not(.series-mode) .movie-card:hover {
+    transform: scale(1.03);
+  }
+  .movie-content {
+    width: 60%;
+    padding: 15px;
+    box-sizing: border-box;
+  }
+  .text-extra-image {
+    width: 100%;
+    border-radius: 4px;
+    margin-top: 10px;
+  }
+  .right-side {
+    width: 40%;
+    padding: 15px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .right-side .movie-image {
+    width: 100%;
+    border-radius: 8px;
+  }
+  .poster-extra-image {
+    width: 100%;
+    border-radius: 4px;
+    margin-top: 10px;
+  }
+  .extra-info {
+    display: none;
+    background: rgba(255,255,255,0.95);
+    padding: 20px;
+  }
+  .movie-card.show-info .extra-info {
+    display: block;
+  }
+  .movie-card.show-info .text-extra-image,
+  .movie-card.show-info .poster-extra-image {
+    display: none !important;
+  }
+  .filter-bar {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    margin-bottom: 30px;
+  }
+  .trailer-container {
+    width: 100%;
+    height: 200px;
+    border-radius: 10px;
+    overflow: hidden;
+    visibility: hidden;
+  }
+  body:not(.series-mode) .movie-card.show-info .trailer-container {
+    visibility: visible;
+  }
+
+  .filter-hamburger {
+    font-size: 20px;
+    padding: 8px 10px;
+    line-height: 1;
+  }
+  .dropdown-menu .form-select,
+  .dropdown-menu .form-control {
+    min-width: 220px;
+  }
+  </style>
 </head>
+
 <body class="bg-light">
 
   <!-- כפתור גוגל -->
   <div id="gLoginBtn" style="margin: 40px auto; width: fit-content;"></div>
 
-  <!-- תוכן האתר -->
+  <!-- תוכן האתר (מוסתר עד כניסה) -->
   <div id="appContent" style="display:none;">
 
     <div class="container py-5">
       <h1 class="text-center mb-3">🎬 הסרטים שלנו</h1>
 
-      <!-- החיפוש + מסננים -->
+      <!-- החיפוש + כפתור המבורגר -->
       <div class="filter-bar text-center mb-3">
         <div class="d-flex justify-content-center align-items-center gap-2" style="width:100%;">
           <input type="text" id="searchInput" class="form-control"
@@ -188,20 +274,20 @@
 
           <div class="dropdown">
             <button id="filterBtn" class="btn btn-outline-secondary filter-hamburger"
-              type="button" data-bs-toggle="dropdown">
+              type="button" data-bs-toggle="dropdown" aria-expanded="false"
+              title="סינון" aria-label="סינון">
               ☰
             </button>
-
-            <div class="dropdown-menu dropdown-menu-end p-3" style="min-width:280px;">
+            <div class="dropdown-menu dropdown-menu-end p-3" style="min-width: 280px;">
               <div class="mb-2">
-                <label class="form-label mb-1">שנה</label>
+                <label for="yearFilter" class="form-label mb-1">שנה</label>
                 <select id="yearFilter" class="form-select" onchange="applyFilters()">
                   <option value="">כל השנים</option>
                 </select>
               </div>
 
               <div class="mb-2">
-                <label class="form-label mb-1">דירוג IMDb</label>
+                <label for="ratingFilter" class="form-label mb-1">דירוג IMDb</label>
                 <select id="ratingFilter" class="form-select" onchange="applyFilters()">
                   <option value="0">כל הדירוגים</option>
                   <option value="9">9 ומעלה</option>
@@ -212,14 +298,14 @@
               </div>
 
               <div class="mb-2">
-                <label class="form-label mb-1">ז'אנר</label>
+                <label for="genreFilter" class="form-label mb-1">ז'אנר</label>
                 <select id="genreFilter" class="form-select" onchange="applyFilters()">
                   <option value="">כל הז'אנרים</option>
                 </select>
               </div>
 
               <div class="mb-2">
-                <label class="form-label mb-1">סוג קהל</label>
+                <label for="pgFilter" class="form-label mb-1">סוג קהל</label>
                 <select id="pgFilter" class="form-select" onchange="applyFilters()">
                   <option value="">כל סוגי הקהל</option>
                 </select>
@@ -237,8 +323,14 @@
       </div>
 
       <div id="moviecontainer" class="row row-cols-1 row-cols-md-2 g-4"></div>
-
     </div>
+
+    <a href="https://docs.google.com/forms/d/e/1FAIpQLSePUwUmQBi4iJN5FjptxlrWIuDG7z1FEe7lSyVmBkzo6eRVMw/viewform?usp=dialog"
+      target="_blank"
+      class="bug-report-button"
+      data-tooltip="טופס תקלות<br>דיווח על פרק/סרט">
+      ⚠️
+    </a>
 
   </div>
 
@@ -246,7 +338,7 @@
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 
-  <!-- JS -->
+  <!-- הקוד של האתר -->
   <script src="main.js"></script>
 
 </body>
