@@ -26,7 +26,7 @@ async function loadSheet(sheetId, sheetName = "") {
 
   const res = await fetch(url);
   if (!res.ok) {
-    const txt = await res.text();
+    const txt = await res.text().catch(() => "");
     console.error("Worker error:", res.status, txt);
     throw new Error("worker fetch failed");
   }
@@ -56,15 +56,15 @@ async function loadSheet(sheetId, sheetName = "") {
 function createMovieCard(data) {
   const heb    = data["שם הסרט בעברית"]     || "";
   const eng    = data["שם הסרט באנגלית"]    || "";
-  const pic    = data["קישור לתמונה"]        || fallbackImage;
+  const pic    = data["קישור לתמונה"]       || fallbackImage;
   const year   = data["שנת יציאה"]          || "";
-  const genre  = data["ז'אנר"]               || "";
-  const desc   = data["תיאור קצר"]           || "";
-  const dir    = data["במאי"]                || "";
-  const actors = data["שחקנים ראשיים"]      || "";
-  const writer = data["תסריטאי"]             || "";
-  const prod   = data["מפיק"]                || "";
-  const score  = data["ציון IMDb"]           || "";
+  const genre  = data["ז'אנר"]              || "";
+  const desc   = data["תיאור קצר"]          || "";
+  const dir    = data["במאי"]               || "";
+  const actors = data["שחקנים ראשיים"]     || "";
+  const writer = data["תסריטאי"]            || "";
+  const prod   = data["מפיק"]               || "";
+  const score  = data["ציון IMDb"]          || "";
   const awards = data["פרסים והישגים בולטים"] || "";
   const pg     = data["סרט לילדים / מבוגרים"]|| "";
   const viewL  = (data["קישור לדרייב"]    || "").trim();
@@ -206,7 +206,7 @@ async function loadMovies() {
   renderMovies(allMovies);
 
   // סינון: שנים
-  const years = [...new Set(allMovies.map(m=>m["שנת יציאה"]).filter(Boolean))].sort();
+  const years = [...new Set(allMovies.map(m => m["שנת יציאה"]).filter(Boolean))].sort();
   const ySel = document.getElementById("yearFilter");
   ySel.innerHTML = '<option value="">כל השנים</option>';
   years.forEach(y => {
@@ -217,7 +217,9 @@ async function loadMovies() {
 
   // סינון: ז'אנרים
   const gset = new Set();
-  allMovies.forEach(m => (m["ז'אנר"]||"").split(",").forEach(x=>x.trim()&&gset.add(x.trim())));
+  allMovies.forEach(m =>
+    (m["ז'אנר"] || "").split(",").forEach(x => x.trim() && gset.add(x.trim()))
+  );
   const gSel = document.getElementById("genreFilter");
   gSel.innerHTML = '<option value="">כל הז\'אנרים</option>';
   [...gset].sort().forEach(g => {
@@ -227,7 +229,7 @@ async function loadMovies() {
   });
 
   // סינון: קהל יעד
-  const pset = new Set(allMovies.map(m=>m["סרט לילדים / מבוגרים"]).filter(Boolean));
+  const pset = new Set(allMovies.map(m => m["סרט לילדים / מבוגרים"]).filter(Boolean));
   const pSel = document.getElementById("pgFilter");
   pSel.innerHTML = '<option value="">כל סוגי הקהל</option>';
   [...pset].sort().forEach(pv => {
@@ -272,6 +274,7 @@ async function loadEpisodes(encodedName) {
   });
 
   container.innerHTML = "";
+
   const back = document.createElement("button");
   back.className = "btn btn-outline-secondary mb-3";
   back.textContent = "🔙 חזרה לסדרות";
@@ -279,13 +282,14 @@ async function loadEpisodes(encodedName) {
   container.append(back);
 
   Object.keys(grouped)
-    .map(n=>parseInt(n,10))
-    .sort((a,b)=>a-b)
+    .map(n => parseInt(n, 10))
+    .sort((a, b) => a - b)
     .forEach(seasonNum => {
       const btn = document.createElement("button");
       btn.className = "btn btn-info m-2";
       btn.textContent = `עונה ${seasonNum}`;
-      btn.onclick = () => showEpisodesInSeason(seriesName, grouped[seasonNum], seasonNum);
+      btn.onclick = () =>
+        showEpisodesInSeason(seriesName, grouped[seasonNum], seasonNum);
       container.append(btn);
     });
 }
@@ -295,7 +299,8 @@ async function loadEpisodes(encodedName) {
  ****************************************************************/
 function showEpisodesInSeason(seriesName, episodesList, seasonNum) {
   const container = document.getElementById("moviecontainer");
-  container.innerHTML = `<h3 class="text-center mb-4">${seriesName} – עונה ${seasonNum}</h3>`;
+  container.innerHTML =
+    `<h3 class="text-center mb-4">${seriesName} – עונה ${seasonNum}</h3>`;
 
   const backToSeasons = document.createElement("button");
   backToSeasons.className = "btn btn-outline-secondary mb-3";
@@ -362,11 +367,23 @@ function applyFilters() {
 
   const filtered = allMovies.filter(m => {
     const ym = !y || m["שנת יציאה"] === y;
-    const rm = (parseFloat(m["ציון IMDb"])||0) >= r;
-    const gm = !g || (m["ז'אנר"]||"").toLowerCase().split(",").map(x=>x.trim()).includes(g);
-    const pm = !p || (m["סרט לילדים / מבוגרים"]||"").toLowerCase() === p;
-    const sm = [m["שם הסרט בעברית"], m["שם הסרט באנגלית"], m["במאי"], m["שחקנים ראשיים"], m["תיאור קצר"]]
-                 .some(f => f && f.toLowerCase().includes(q));
+    const rm = (parseFloat(m["ציון IMDb"]) || 0) >= r;
+    const gm = !g ||
+      (m["ז'אנר"] || "")
+        .toLowerCase()
+        .split(",")
+        .map(x => x.trim())
+        .includes(g);
+    const pm = !p ||
+      (m["סרט לילדים / מבוגרים"] || "").toLowerCase() === p;
+    const sm = [
+      m["שם הסרט בעברית"],
+      m["שם הסרט באנגלית"],
+      m["במאי"],
+      m["שחקנים ראשיים"],
+      m["תיאור קצר"]
+    ].some(f => f && f.toLowerCase().includes(q));
+
     return ym && rm && gm && pm && sm;
   });
 
@@ -374,7 +391,7 @@ function applyFilters() {
 }
 
 /****************************************************************
- * 10) כפתור מעבר
+ * 10) כפתור מעבר סרטים / סדרות
  ****************************************************************/
 document.getElementById("toggleViewBtn").addEventListener("click", () => {
   if (isSeriesMode) {
