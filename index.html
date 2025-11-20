@@ -33,7 +33,8 @@
         if (!res.ok) return false;
 
         const text = await res.text();
-        const clean = text.replace(/^\uFEFF/, "");
+        const clean = text.replace(/^
+\uFEFF/, "");
         const rows = clean.trim().split("\n");
 
         const emails = rows
@@ -118,7 +119,6 @@
 
     window.onload = startLoginFlow;
   </script>
-
 
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 
@@ -221,6 +221,17 @@ body:not(.series-mode) .movie-card:hover {
 body:not(.series-mode) .movie-card.show-info .trailer-container {
   visibility: visible;
 }
+
+/* עיצוב קטן לכפתור המבורגר */
+.filter-hamburger {
+  font-size: 20px;
+  padding: 8px 10px;
+  line-height: 1;
+}
+.dropdown-menu .form-select,
+.dropdown-menu .form-control {
+  min-width: 220px;
+}
 </style>
 
 </head>
@@ -233,37 +244,62 @@ body:not(.series-mode) .movie-card.show-info .trailer-container {
   <div id="appContent" style="display:none;">
 
     <div class="container py-5">
-      <h1 class="text-center mb-4">🎬 הסרטים שלנו</h1>
+      <h1 class="text-center mb-3">🎬 הסרטים שלנו</h1>
+
+      <!-- החיפוש + כפתור המבורגר מתחת לכותרת -->
+      <div class="filter-bar text-center mb-3">
+        <div class="d-flex justify-content-center align-items-center gap-2" style="width:100%;">
+          <input type="text" id="searchInput" class="form-control" style="min-width:280px; max-width:720px;"
+            placeholder="חיפוש לפי שם, במאי, שחקנים, תיאור" oninput="applyFilters()">
+
+          <div class="dropdown">
+            <button id="filterBtn" class="btn btn-outline-secondary filter-hamburger"
+              type="button" data-bs-toggle="dropdown" aria-expanded="false"
+              title="סינון" aria-label="סינון">
+              ☰
+            </button>
+            <div class="dropdown-menu dropdown-menu-end p-3" style="min-width: 280px;">
+              <div class="mb-2">
+                <label for="yearFilter" class="form-label mb-1">שנה</label>
+                <select id="yearFilter" class="form-select" onchange="applyFilters()">
+                  <option value="">כל השנים</option>
+                </select>
+              </div>
+
+              <div class="mb-2">
+                <label for="ratingFilter" class="form-label mb-1">דירוג IMDb</label>
+                <select id="ratingFilter" class="form-select" onchange="applyFilters()">
+                  <option value="0">כל הדירוגים</option>
+                  <option value="9">9 ומעלה</option>
+                  <option value="8">8 ומעלה</option>
+                  <option value="7">7 ומעלה</option>
+                  <option value="6">6 ומעלה</option>
+                </select>
+              </div>
+
+              <div class="mb-2">
+                <label for="genreFilter" class="form-label mb-1">ז'אנר</label>
+                <select id="genreFilter" class="form-select" onchange="applyFilters()">
+                  <option value="">כל הז'אנרים</option>
+                </select>
+              </div>
+
+              <div class="mb-2">
+                <label for="pgFilter" class="form-label mb-1">סוג קהל</label>
+                <select id="pgFilter" class="form-select" onchange="applyFilters()">
+                  <option value="">כל סוגי הקהל</option>
+                </select>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </div>
 
       <div class="text-center mb-4">
         <button id="toggleViewBtn" class="btn btn-outline-primary">
           📺 מעבר לתצוגת סדרות
         </button>
-      </div>
-
-      <div class="filter-bar text-center mb-4">
-        <input type="text" id="searchInput" class="form-control"
-          placeholder="חיפוש לפי שם, במאי, שחקנים, תיאור" oninput="applyFilters()">
-
-        <select id="yearFilter" class="form-select mt-2" onchange="applyFilters()">
-          <option value="">כל השנים</option>
-        </select>
-
-        <select id="ratingFilter" class="form-select mt-2" onchange="applyFilters()">
-          <option value="0">כל הדירוגים</option>
-          <option value="9">9 ומעלה</option>
-          <option value="8">8 ומעלה</option>
-          <option value="7">7 ומעלה</option>
-          <option value="6">6 ומעלה</option>
-        </select>
-
-        <select id="genreFilter" class="form-select mt-2" onchange="applyFilters()">
-          <option value="">כל הז'אנרים</option>
-        </select>
-
-        <select id="pgFilter" class="form-select mt-2" onchange="applyFilters()">
-          <option value="">כל סוגי הקהל</option>
-        </select>
       </div>
 
       <div id="moviecontainer" class="row row-cols-1 row-cols-md-2 g-4"></div>
