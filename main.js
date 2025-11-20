@@ -7,7 +7,7 @@ const WORKER_URL = "https://royal-lab-55af.orimoshe-by.workers.dev";
 
 // ⚠ כאן צריך לשים את ה-ID של טבלת הסרטים שלך בגוגל שיטס
 // (לא ה-2PACX..., אלא ה-ID שמופיע ב-URL בין /d/ ל-/edit)
-const MOVIES_SPREADSHEET_ID = "PUT_MOVIES_SHEET_ID_HERE";
+const MOVIES_SPREADSHEET_ID = "1fipo99hdn-PZv2GwNVBd5boXTnmcuD_d";
 
 // טבלת הסדרות (ID ושם הגיליון)
 const seriesListId   = "1yYRTUq6iRh0dfhFFFpVJiR351jXS2Ll-9VCjsLrTW0Y";
