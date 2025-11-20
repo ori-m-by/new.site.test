@@ -43,28 +43,33 @@
     /*****************************************************
      * 3) מחזיר TRUE אם המייל נמצא בטבלת המורשים
      *****************************************************/
-    async function isEmailAllowed(email) {
-      try {
-        const data = await fetchSheetFromWorker(APPROVED_SHEET_ID, APPROVED_SHEET_NAME);
+/*****************************************************
+ * 3) מחזיר TRUE אם המייל נמצא בטבלת המורשים
+ *****************************************************/
+async function isEmailAllowed(email) {
+  try {
+    const data = await fetchSheetFromWorker(APPROVED_SHEET_ID, APPROVED_SHEET_NAME);
 
-        const values = data.valueRanges?.[0]?.values;
-        if (!values || values.length < 2) {
-          console.error("No rows in allowed emails sheet");
-          return false;
-        }
-
-        // שורה ראשונה כותרת, השאר מיילים
-        const emails = values
-          .slice(1)
-          .map(row => (row[0] || "").trim().toLowerCase())
-          .filter(Boolean);
-
-        return emails.includes(email.toLowerCase());
-      } catch (e) {
-        console.error("Error checking allowed emails:", e);
-        return false;
-      }
+    // ❗ ה־Worker מחזיר data.values ולא valueRanges
+    const values = data.values;
+    if (!values || values.length < 2) {
+      console.error("No rows in allowed emails sheet");
+      return false;
     }
+
+    // שורה ראשונה כותרת, השאר מיילים
+    const emails = values
+      .slice(1)
+      .map(row => (row[0] || "").trim().toLowerCase())
+      .filter(Boolean);
+
+    return emails.includes(email.toLowerCase());
+  } catch (e) {
+    console.error("Error checking allowed emails:", e);
+    return false;
+  }
+}
+
 
     /*****************************************************
      * 4) callback של התחברות גוגל
