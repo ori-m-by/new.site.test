@@ -32,7 +32,7 @@ async function loadSheet(sheetId, sheetName = "") {
   }
 
   const data = await res.json();
-  const values = data.valueRanges?.[0]?.values || [];
+  const values = data.values || [];
   if (!values.length) return [];
 
   const headers = values[0];
